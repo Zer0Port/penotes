@@ -124,18 +124,6 @@ function toggleAll() {
   const anyExpanded = TACTIC_GROUPS.some(g => g._collapsed === false);
   anyExpanded ? collapseAll() : expandAll();
 }
-function collapseAllCWE() {
-  CWE_TOPICS.forEach(t => t._collapsed = true);
-  buildSidebar();
-}
-function expandAllCWE() {
-  CWE_TOPICS.forEach(t => t._collapsed = false);
-  buildSidebar();
-}
-function toggleAllCWE() {
-  const anyExpanded = CWE_TOPICS.some(t => t._collapsed === false);
-  anyExpanded ? collapseAllCWE() : expandAllCWE();
-}
 
 /* ─── Sidebar rendering ──────────────────────────────────────────────────────── */
 function buildSidebar() {
@@ -232,45 +220,6 @@ function buildSidebar() {
     html += `</div>`;
   });
 
-  // CWE Topics section
-  html += `<hr class="divider"><div class="sidebar-section-header">
-    <span>CWE Topics</span>
-    <button class="btn-tree-action" onclick="toggleAllCWE()" title="Expand / Collapse all">${CWE_TOPICS.some(t => t._collapsed === false) ? '⊖' : '⊕'}</button>
-  </div>`;
-
-  CWE_TOPICS.forEach(topic => {
-    let matchingTechs = topic.techniques.filter(t => {
-      if (q && !t.name.toLowerCase().includes(q) &&
-          !topic.name.toLowerCase().includes(q) &&
-          !(t.tags || []).some(tag => tag.includes(q))) return false;
-      return true;
-    });
-
-    if (q && matchingTechs.length === 0) return;
-
-    const folderId = 'cwe-folder-' + topic.id;
-    const isCollapsed = topic._collapsed !== false;
-
-    html += `
-      <div class="tree-item tree-folder ${isCollapsed ? 'collapsed' : ''}" data-cwe-folder="${escHtml(topic.id)}">
-        <span class="tree-icon">▼</span>
-        <span>${escHtml(topic.icon)} ${escHtml(topic.name)}</span>
-      </div>
-      <div class="tree-children" id="${escHtml(folderId)}"${isCollapsed ? ' style="display:none"' : ''}>
-    `;
-
-    matchingTechs.forEach(tech => {
-      const isSelected = state.selectedNodeId === 'cwe-' + tech.id ? ' active' : '';
-      html += `
-        <div class="tree-item tree-technique${isSelected}" data-cwe="${escHtml(tech.id)}" data-topic="${escHtml(topic.id)}">
-          <span>📄 ${escHtml(tech.name)}</span>
-        </div>
-      `;
-    });
-
-    html += `</div>`;
-  });
-
   // Sessions section
   html += `<hr class="divider"><div class="sidebar-section-header">Sessions</div>`;
   if (state.sessions.length === 0) {
@@ -313,18 +262,6 @@ function buildSidebar() {
     });
   });
 
-  // Folder toggle (CWE)
-  tree.querySelectorAll('[data-cwe-folder]').forEach(el => {
-    el.addEventListener('click', e => {
-      const tId = el.dataset.cweFolder;
-      const topic = CWE_TOPICS.find(t => t.id === tId);
-      if (topic) topic._collapsed = (topic._collapsed !== false) ? false : true;
-      el.classList.toggle('collapsed');
-      const children = document.getElementById('cwe-folder-' + tId);
-      if (children) children.style.display = topic._collapsed ? 'none' : '';
-    });
-  });
-
   // Technique click (TACTICS)
   tree.querySelectorAll('[data-technique]').forEach(el => {
     el.addEventListener('click', e => {
@@ -333,18 +270,6 @@ function buildSidebar() {
       const tacticId = el.dataset.tactic;
       state.selectedNodeId = techId;
       selectTechnique(tacticId, techId);
-      closeSidebarIfMobile();
-    });
-  });
-
-  // Technique click (CWE)
-  tree.querySelectorAll('[data-cwe]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      const techId = el.dataset.cwe;
-      const topicId = el.dataset.topic;
-      state.selectedNodeId = 'cwe-' + techId;
-      selectCWETechnique(topicId, techId);
       closeSidebarIfMobile();
     });
   });
@@ -415,49 +340,6 @@ function selectTechnique(tacticId, techId) {
   });
 }
 
-function selectCWETechnique(topicId, techId) {
-  const topic = CWE_TOPICS.find(t => t.id === topicId);
-  if (!topic) return;
-  const tech = topic.techniques.find(t => t.id === techId);
-  if (!tech) return;
-
-  buildSidebar();
-
-  const tagsHtml = (tech.tags || []).map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
-
-  let commandsHtml = '';
-  tech.commands.forEach(cmd => {
-    const copyId = 'copy-' + cmd.id;
-    commandsHtml += `
-      <div class="command-card">
-        <div class="command-card-header">
-          <span class="command-label">${escHtml(cmd.label)}</span>
-          ${cmd.os ? `<span class="command-os">${escHtml(cmd.os)}</span>` : ''}
-        </div>
-        <div class="command-body">${renderCommandText(cmd.command)}</div>
-        <div class="command-footer">
-          <span class="command-notes">${escHtml(cmd.notes || '')}</span>
-          <button class="btn-copy" id="${escHtml(copyId)}" onclick="copyCWECommand('${escHtml(cmd.id)}','${escHtml(topic.id)}','${escHtml(tech.id)}',this)">Copy</button>
-        </div>
-      </div>
-    `;
-  });
-
-  document.getElementById('content').innerHTML = `
-    <div class="technique-header">
-      <div class="technique-title">${topic.icon} ${escHtml(tech.name)}</div>
-    </div>
-    <div class="technique-tags">${tagsHtml}</div>
-    <div class="technique-desc">${escHtml(tech.description)}</div>
-    <div class="commands-label">Tools & Techniques</div>
-    ${commandsHtml}
-  `;
-
-  // Bind variable click handlers
-  document.querySelectorAll('.var-missing').forEach(el => {
-    el.addEventListener('click', () => openVarModal(el.dataset.var));
-  });
-}
 
 function renderSessionDetail(sid) {
   const sess = state.sessions.find(s => s.id === sid);
@@ -923,31 +805,6 @@ function copyCommand(cmdId, tacticId, techId, btnEl) {
   });
 }
 
-function copyCWECommand(cmdId, topicId, techId, btnEl) {
-  const topic = CWE_TOPICS.find(t => t.id === topicId);
-  const tech = topic && topic.techniques.find(t => t.id === techId);
-  const cmd = tech && tech.commands.find(c => c.id === cmdId);
-  if (!cmd) return;
-
-  const text = getCommandCopyText(cmd.command);
-  navigator.clipboard.writeText(text).then(() => {
-    btnEl.textContent = 'Copied!';
-    btnEl.classList.add('copied');
-    setTimeout(() => {
-      btnEl.textContent = 'Copy';
-      btnEl.classList.remove('copied');
-    }, 1800);
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    ta.remove();
-    btnEl.textContent = 'Copied!';
-    setTimeout(() => { btnEl.textContent = 'Copy'; }, 1800);
-  });
-}
 
 /* ─── Sidebar toggle ─────────────────────────────────────────────────────────── */
 function closeSidebarIfMobile() {
@@ -1033,16 +890,6 @@ function refreshAll() {
     if (state.selectedNodeId.startsWith('session-')) {
       const sid = state.selectedNodeId.replace('session-', '');
       renderSessionDetail(sid);
-    } else if (state.selectedNodeId.startsWith('cwe-')) {
-      // It's a CWE technique id — find its topic
-      const techId = state.selectedNodeId.replace('cwe-', '');
-      for (const topic of CWE_TOPICS) {
-        const tech = topic.techniques.find(t => t.id === techId);
-        if (tech) {
-          selectCWETechnique(topic.id, techId);
-          break;
-        }
-      }
     } else {
       // It's a TACTICS technique id — find its tactic
       for (const tactic of TACTICS) {
