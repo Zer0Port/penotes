@@ -6,6 +6,7 @@ const state = {
   filterReady: false,    // show only ready techniques
   searchQuery: '',       // sidebar search string
   activeTags: [],        // active tag-filter chips
+  sessionTab: 'ready',   // last active session detail tab
 };
 
 /* ─── Helpers ────────────────────────────────────────────────────────────────── */
@@ -332,6 +333,7 @@ function buildSidebar() {
       const tacticId = el.dataset.tactic;
       state.selectedNodeId = techId;
       selectTechnique(tacticId, techId);
+      closeSidebarIfMobile();
     });
   });
 
@@ -343,6 +345,7 @@ function buildSidebar() {
       const topicId = el.dataset.topic;
       state.selectedNodeId = 'cwe-' + techId;
       selectCWETechnique(topicId, techId);
+      closeSidebarIfMobile();
     });
   });
 
@@ -353,6 +356,7 @@ function buildSidebar() {
       state.selectedNodeId = 'session-' + sid;
       renderSessionDetail(sid);
       buildSidebar();
+      closeSidebarIfMobile();
     });
   });
 }
@@ -469,19 +473,23 @@ function renderSessionDetail(sid) {
     </div>
     <div class="session-meta">Created ${created} · ${filledCount} variables filled</div>
     <div class="stab-bar">
-      <button class="stab-btn active" data-tab="ready" onclick="switchSessionTab('ready')">▶ Ready</button>
+      <button class="stab-btn" data-tab="ready" onclick="switchSessionTab('ready')">▶ Ready</button>
       <button class="stab-btn" data-tab="discover" onclick="switchSessionTab('discover')">🔍 Discover</button>
+      <button class="stab-btn stab-btn-vars-only" data-tab="vars" onclick="switchSessionTab('vars')">⚙ Vars</button>
     </div>
     <div class="stab-pane" data-pane="ready">${renderReadyPane(sess)}</div>
     <div class="stab-pane" data-pane="discover" style="display:none">${renderDiscoverPane(sess)}</div>
+    <div class="stab-pane" data-pane="vars" style="display:none">${renderVarsPane(sess)}</div>
     <div style="padding:4px 0 16px;display:flex;gap:8px">
       <button class="btn btn-ghost btn-sm" onclick="openAddVarModal()">+ Add Variable</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="confirmDeleteSession('${escHtml(sid)}')">Delete Session</button>
     </div>
   `;
+  switchSessionTab(state.sessionTab || 'ready');
 }
 
 function switchSessionTab(tab) {
+  state.sessionTab = tab;
   document.querySelectorAll('.stab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.stab-pane').forEach(p =>
@@ -524,7 +532,7 @@ function renderReadyPane(sess) {
     return `<div class="empty-state">
       <div style="font-size:32px;margin-bottom:8px">🔒</div>
       <div>No commands fully unlocked yet.</div>
-      <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Fill in variables in the right panel to unlock commands.</div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Fill in variables using the ⚙ Vars tab or the right panel.</div>
     </div>`;
   }
 
@@ -567,16 +575,16 @@ function renderDiscoverPane(sess) {
       groupHtml += `<div class="discover-var-header">${escHtml(varName)}</div>`;
 
       const entries = varDef.howToGet.map(entry => {
-        const neededVars = entry.command.match(/\$\$[A-Z0-9_]+/g) || [];
-        const runnable = neededVars.length === 0 || neededVars.every(v => sess.vars[v] && sess.vars[v].trim());
+        const neededVars = (entry.command || '').match(/\$\$[A-Z0-9_]+/g) || [];
+        const runnable = !!entry.command && (neededVars.length === 0 || neededVars.every(v => sess.vars[v] && sess.vars[v].trim()));
         return { entry, runnable };
       }).sort((a, b) => b.runnable - a.runnable);
 
       entries.forEach(({ entry, runnable }) => {
         groupHtml += `
-          <div class="howtoget-card${runnable ? '' : ' dimmed'}" data-raw-cmd="${escHtml(entry.command)}">
+          <div class="howtoget-card${runnable ? '' : ' dimmed'}" ${entry.command ? `data-raw-cmd="${escHtml(entry.command)}"` : ''}>
             <div class="howtoget-method">${escHtml(entry.method)}</div>
-            <div class="command-body">${renderCommandText(entry.command)}</div>
+            ${entry.command ? `<div class="command-body">${renderCommandText(entry.command)}</div>` : ''}
             ${entry.notes ? `<div class="command-notes">${escHtml(entry.notes)}</div>` : ''}
             ${runnable ? `<button class="btn-copy" onclick="copyRawCommand(this.closest('[data-raw-cmd]').dataset.rawCmd, this)">Copy</button>` : ''}
           </div>`;
@@ -595,6 +603,36 @@ function renderDiscoverPane(sess) {
     </div>`;
   }
 
+  return html;
+}
+
+/* ─── Shared var-row renderer (used by right panel + mobile vars pane) ──────── */
+function varRowHtml(name, sess) {
+  const val = sess.vars[name];
+  const hasVal = val && val.trim();
+  return `
+    <div class="var-row" onclick="openVarModal('${escHtml(name)}')">
+      <div class="var-row-name">
+        <span class="var-row-dot ${hasVal ? 'dot-filled' : 'dot-missing'}"></span>${escHtml(name)}
+      </div>
+      ${hasVal
+        ? `<div class="var-row-value">${escHtml(val)}</div>`
+        : `<div class="var-row-empty">unknown</div>`}
+    </div>`;
+}
+
+function buildVarListHtml(sess) {
+  const groupedVarNames = new Set(VAR_GROUPS.flatMap(g => g.vars));
+  const extraVarNames = Object.keys(sess.vars).filter(n => !groupedVarNames.has(n));
+  let html = '';
+  VAR_GROUPS.forEach(group => {
+    html += `<div class="var-group-label">${escHtml(group.name)}</div>`;
+    group.vars.forEach(name => { html += varRowHtml(name, sess); });
+  });
+  if (extraVarNames.length > 0) {
+    html += `<div class="var-group-label">Custom</div>`;
+    extraVarNames.forEach(name => { html += varRowHtml(name, sess); });
+  }
   return html;
 }
 
@@ -618,43 +656,22 @@ function buildRightPanel() {
     return;
   }
 
-  // Collect any session-only vars not in any group (custom vars added at runtime)
-  const groupedVarNames = new Set(VAR_GROUPS.flatMap(g => g.vars));
-  const extraVarNames = Object.keys(sess.vars).filter(n => !groupedVarNames.has(n));
-
-  function varRowHtml(name) {
-    const val = sess.vars[name];
-    const hasVal = val && val.trim();
-    return `
-      <div class="var-row" onclick="openVarModal('${escHtml(name)}')">
-        <div class="var-row-name">
-          <span class="var-row-dot ${hasVal ? 'dot-filled' : 'dot-missing'}"></span>${escHtml(name)}
-        </div>
-        ${hasVal
-          ? `<div class="var-row-value">${escHtml(val)}</div>`
-          : `<div class="var-row-empty">unknown</div>`}
-      </div>`;
-  }
-
-  let varListHtml = '';
-  VAR_GROUPS.forEach(group => {
-    varListHtml += `<div class="var-group-label">${escHtml(group.name)}</div>`;
-    group.vars.forEach(name => { varListHtml += varRowHtml(name); });
-  });
-  if (extraVarNames.length > 0) {
-    varListHtml += `<div class="var-group-label">Custom</div>`;
-    extraVarNames.forEach(name => { varListHtml += varRowHtml(name); });
-  }
-
   panel.innerHTML = `
     <div class="panel-header">
       <span class="panel-title">Session Variables</span>
     </div>
     <div class="session-name-display">${escHtml(sess.name)}</div>
-    <div id="var-list">${varListHtml}</div>
+    <div id="var-list">${buildVarListHtml(sess)}</div>
     <div class="panel-footer">
       <button class="btn btn-ghost btn-sm btn-full" onclick="openAddVarModal()">+ Add Variable</button>
     </div>
+  `;
+}
+
+/* ─── Mobile Vars Pane (shown as ⚙ Vars tab on mobile) ─────────────────────── */
+function renderVarsPane(sess) {
+  return `
+    <div style="padding-bottom:8px">${buildVarListHtml(sess)}</div>
   `;
 }
 
@@ -933,6 +950,14 @@ function copyCWECommand(cmdId, topicId, techId, btnEl) {
 }
 
 /* ─── Sidebar toggle ─────────────────────────────────────────────────────────── */
+function closeSidebarIfMobile() {
+  if (window.innerWidth > 700) return;
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.style.left = -sidebar.offsetWidth + 'px';
+  overlay.classList.remove('show');
+}
+
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');

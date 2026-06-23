@@ -388,8 +388,9 @@ html, body {
   font-size: 13px;
   line-height: 1.7;
   color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   position: relative;
 }
 
@@ -605,10 +606,14 @@ html, body {
   padding: 7px 8px 5px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+#tag-bar::-webkit-scrollbar { display: none; }
 
 .tag-chip {
   padding: 2px 8px;
@@ -1062,11 +1067,105 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; 
   outline: none;
 }
 
-/* ─── Responsive tweak ──────────────────────────────────────────────────────── */
+/* Vars tab: hidden on desktop, shown only on mobile */
+.stab-btn-vars-only { display: none; }
+
+/* ─── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   :root { --right-w: 200px; --sidebar-w: 200px; }
 }
+
 @media (max-width: 700px) {
+  :root { --sidebar-w: 200px; }
+
+  /* Header: compact, hide "Ready only" toggle */
+  #header { padding: 0 10px; gap: 6px; }
+  .header-center { flex: 1; min-width: 0; }
+  .filter-toggle { display: none; }
+
+  /* Content: reduce padding */
+  #content { padding: 20px 16px; }
+
+  /* Right panel: hidden — access via ⚙ Vars tab in session detail */
   #right-panel { display: none; }
-  :root { --sidebar-w: 180px; }
+
+  /* Vars tab: visible on mobile */
+  .stab-btn-vars-only { display: block; }
+
+  /* Stab bar: sticky so tabs stay visible while scrolling */
+  .stab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    margin: 0 -16px;
+    padding: 16px 16px 0;
+  }
+
+  /* Larger touch targets */
+  .stab-btn { min-height: 40px; padding: 8px 16px; font-size: 13px; }
+  .tag-chip { padding: 5px 10px; min-height: 32px; }
+  .btn-copy { min-height: 36px; padding: 6px 16px; }
+
+  /* Session detail header */
+  .session-detail-header { flex-wrap: wrap; gap: 8px; }
+  .session-detail-title { font-size: 18px; }
+  .session-meta { margin-bottom: 0; }
+
+  /* Command cards: full-bleed edge-to-edge */
+  .command-card {
+    border-radius: 0;
+    margin-left: -16px;
+    margin-right: -16px;
+    border-left: none;
+    border-right: none;
+    margin-bottom: 0;
+  }
+  .command-card + .command-card { border-top: none; }
+
+  /* howtoget cards: full-bleed */
+  .howtoget-card {
+    border-radius: 0;
+    margin-left: -16px;
+    margin-right: -16px;
+    border-left: none;
+    border-right: none;
+    margin-bottom: 0;
+  }
+  .howtoget-card + .howtoget-card { border-top: none; }
+
+  /* Modals: slide up from bottom as a sheet */
+  .modal-overlay { align-items: flex-end; }
+  .modal {
+    border-radius: 16px 16px 0 0;
+    max-width: 100%;
+    width: 100%;
+    max-height: 88vh;
+    padding: 20px 16px 32px;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .modal-overlay.show .modal { transform: translateY(0); }
+  .modal-wide { max-width: 100%; }
+
+  /* Modal pull handle */
+  .modal::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  /* Session menu: ensure it doesn't overflow the screen */
+  .session-menu { right: 0; min-width: 200px; }
+
+  /* Welcome screen */
+  .welcome-screen { padding: 40px 16px; }
+
+  /* Technique header */
+  .technique-header h2 { font-size: 18px; }
+  .technique-header { padding: 0 0 16px; }
 }
