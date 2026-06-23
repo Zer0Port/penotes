@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>penotes</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="header">
+      <div class="header-left">
+        <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+        <span class="logo-icon">🔒</span>
+        <span>penotes</span>
+      </div>
+      <div class="header-center">
+        <input type="text" class="header-search" placeholder="Search techniques...">
+      </div>
+      <div class="header-right">
+        <label class="filter-toggle">
+          <input type="checkbox" id="filter-ready"> Ready only
+        </label>
+        <div class="session-switcher">
+          <button id="btn-session" class="btn btn-ghost btn-sm">+ Session ▾</button>
+          <div id="session-menu" class="session-menu"></div>
+        </div>
+      </div>
+    </div>
+    <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div id="body">
+      <div id="sidebar">
+        <div id="tag-bar"></div>
+        <div id="tree-container"></div>
+      </div>
+      <div id="content"></div>
+      <div id="right-panel"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Variable Info Modal -->
+  <div class="modal-overlay" id="var-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="var-modal-title"></span>
+        <button class="modal-close" onclick="closeModal('var-modal')">✕</button>
+      </div>
+      <div class="modal-body" id="var-modal-content"></div>
+    </div>
+  </div>
+
+  <!-- Add Variable Modal -->
+  <div class="modal-overlay" id="add-var-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Add Variable</span>
+        <button class="modal-close" onclick="closeModal('add-var-modal')">✕</button>
+      </div>
+      <div class="modal-body" id="add-var-modal-content"></div>
+    </div>
+  </div>
+
+  <!-- New Session Modal -->
+  <div class="modal-overlay" id="new-session-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">New Session</span>
+        <button class="modal-close" onclick="closeModal('new-session-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Session Name</label>
+          <input type="text" id="new-session-name" placeholder="e.g. ClientCorp AD Pentest">
+        </div>
+        <div class="form-group">
+          <label>Target IP</label>
+          <input type="text" id="new-session-target" placeholder="e.g. 10.10.10.5">
+        </div>
+        <div class="form-group">
+          <label>Domain</label>
+          <input type="text" id="new-session-domain" placeholder="e.g. corp.local">
+        </div>
+        <button class="btn-primary" id="btn-create-session">Create Session</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+</body>
+</html>
