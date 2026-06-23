@@ -1078,6 +1078,10 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; 
 @media (max-width: 700px) {
   :root { --sidebar-w: 200px; }
 
+  /* Prevent any element from causing horizontal page scroll */
+  html, body { overflow-x: hidden; }
+  #body, #content { overflow-x: hidden; }
+
   /* Header: compact, hide "Ready only" toggle */
   #header { padding: 0 10px; gap: 6px; }
   .header-center { flex: 1; min-width: 0; }
