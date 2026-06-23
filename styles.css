@@ -363,6 +363,32 @@ html, body {
 }
 .command-card:hover { border-color: rgba(137,180,250,0.3); }
 
+/* ─── Sub-techniques ──────────────────────────────────────────────────────────── */
+.subtechnique { margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+.subtechnique-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  background: var(--bg-card);
+  cursor: pointer;
+  user-select: none;
+}
+.subtechnique-header:hover { background: var(--bg-hover); }
+
+.subtechnique-chevron { font-size: 10px; color: var(--accent); transition: transform 0.2s; }
+.subtechnique-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--text); }
+.subtechnique-count { font-size: 11px; color: var(--text-muted); background: var(--bg-hover); padding: 2px 7px; border-radius: 10px; }
+
+.subtechnique-body { padding: 8px 0 0; }
+.subtechnique-body .command-card { border-left: none; border-right: none; border-radius: 0; margin-bottom: 0; }
+.subtechnique-body .command-card + .command-card { border-top: none; }
+.subtechnique-body .command-card:last-child { border-bottom: none; }
+
+.subtechnique.collapsed .subtechnique-chevron { transform: rotate(-90deg); }
+.subtechnique.collapsed .subtechnique-body { display: none; }
+
 .command-card-header {
   display: flex;
   align-items: center;

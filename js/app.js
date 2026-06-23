@@ -56,14 +56,35 @@ function loadPersisted() {
   if (state.activeSessionId && !activeSession()) state.activeSessionId = null;
 }
 
+/* ─── Helpers ────────────────────────────────────────────────────────────────── */
+function getAllCommands(tech) {
+  if (tech.subtechniques) return tech.subtechniques.flatMap(st => st.commands);
+  return tech.commands || [];
+}
+
+function renderCommandCardHtml(cmd, tacticId, techId) {
+  return `
+    <div class="command-card">
+      <div class="command-card-header">
+        <span class="command-label">${escHtml(cmd.label)}</span>
+        ${cmd.os ? `<span class="command-os">${escHtml(cmd.os)}</span>` : ''}
+      </div>
+      <div class="command-body">${renderCommandText(cmd.command)}</div>
+      <div class="command-footer">
+        <span class="command-notes">${escHtml(cmd.notes || '')}</span>
+        <button class="btn-copy" onclick="copyCommand('${escHtml(cmd.id)}','${escHtml(tacticId)}','${escHtml(techId)}',this)">Copy</button>
+      </div>
+    </div>`;
+}
+
 /* ─── Readiness ──────────────────────────────────────────────────────────────── */
 function techniqueReadiness(technique) {
   const s = activeSession();
   if (!s) return { status: 'missing', filled: 0, total: 0 };
 
   const vars = new Set();
-  technique.commands.forEach(cmd => {
-    const matches = cmd.command.match(/\$\$[A-Z0-9_]+/g);
+  getAllCommands(technique).forEach(cmd => {
+    const matches = (cmd.command || '').match(/\$\$[A-Z0-9_]+/g);
     if (matches) matches.forEach(v => vars.add(v));
   });
 
@@ -306,22 +327,24 @@ function selectTechnique(tacticId, techId) {
   const readinessBadgeClass = activeSession() ? r.status : 'missing';
 
   let commandsHtml = '';
-  tech.commands.forEach(cmd => {
-    const copyId = 'copy-' + cmd.id;
-    commandsHtml += `
-      <div class="command-card">
-        <div class="command-card-header">
-          <span class="command-label">${escHtml(cmd.label)}</span>
-          ${cmd.os ? `<span class="command-os">${escHtml(cmd.os)}</span>` : ''}
-        </div>
-        <div class="command-body">${renderCommandText(cmd.command)}</div>
-        <div class="command-footer">
-          <span class="command-notes">${escHtml(cmd.notes || '')}</span>
-          <button class="btn-copy" id="${escHtml(copyId)}" onclick="copyCommand('${escHtml(cmd.id)}','${escHtml(tactic.id)}','${escHtml(tech.id)}',this)">Copy</button>
-        </div>
-      </div>
-    `;
-  });
+  if (tech.subtechniques) {
+    tech.subtechniques.forEach(sub => {
+      const cmdsHtml = sub.commands.map(cmd => renderCommandCardHtml(cmd, tactic.id, tech.id)).join('');
+      commandsHtml += `
+        <div class="subtechnique" id="sub-${escHtml(sub.id)}">
+          <div class="subtechnique-header" onclick="toggleSubtechnique('${escHtml(sub.id)}')">
+            <span class="subtechnique-chevron">▼</span>
+            <span class="subtechnique-name">${escHtml(sub.name)}</span>
+            <span class="subtechnique-count">${sub.commands.length}</span>
+          </div>
+          <div class="subtechnique-body">${cmdsHtml}</div>
+        </div>`;
+    });
+  } else {
+    tech.commands.forEach(cmd => {
+      commandsHtml += renderCommandCardHtml(cmd, tactic.id, tech.id);
+    });
+  }
 
   document.getElementById('content').innerHTML = `
     <div class="technique-header">
@@ -330,7 +353,7 @@ function selectTechnique(tacticId, techId) {
     </div>
     <div class="technique-tags">${tagsHtml}</div>
     <div class="technique-desc">${escHtml(tech.description)}</div>
-    <div class="commands-label">Commands</div>
+    ${tech.subtechniques ? '' : '<div class="commands-label">Commands</div>'}
     ${commandsHtml}
   `;
 
@@ -340,6 +363,10 @@ function selectTechnique(tacticId, techId) {
   });
 }
 
+function toggleSubtechnique(subId) {
+  const el = document.getElementById('sub-' + subId);
+  if (el) el.classList.toggle('collapsed');
+}
 
 function renderSessionDetail(sid) {
   const sess = state.sessions.find(s => s.id === sid);
@@ -400,7 +427,7 @@ function renderReadyPane(sess) {
   const groups = [];
   TACTICS.forEach(tactic => {
     tactic.techniques.forEach(tech => {
-      const readyCmds = tech.commands.filter(cmd => {
+      const readyCmds = getAllCommands(tech).filter(cmd => {
         const vars = cmd.command.match(/\$\$[A-Z0-9_]+/g) || [];
         return vars.length > 0 && vars.every(v => sess.vars[v] && sess.vars[v].trim());
       });
@@ -781,7 +808,7 @@ function closeModal(id) {
 function copyCommand(cmdId, tacticId, techId, btnEl) {
   const tactic = TACTICS.find(t => t.id === tacticId);
   const tech = tactic && tactic.techniques.find(t => t.id === techId);
-  const cmd = tech && tech.commands.find(c => c.id === cmdId);
+  const cmd = tech && getAllCommands(tech).find(c => c.id === cmdId);
   if (!cmd) return;
 
   const text = getCommandCopyText(cmd.command);
