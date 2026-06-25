@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>penotes</title>
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
   <div id="app">
@@ -15,12 +15,14 @@
         <span>penotes</span>
       </div>
       <div class="header-center">
-        <input type="text" class="header-search" placeholder="Search techniques...">
+        <div class="search-wrap">
+          <input type="text" class="header-search" placeholder="Search techniques...">
+          <button class="btn-search-filter" id="btn-filter-ready" title="Ready only">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"/></svg>
+          </button>
+        </div>
       </div>
       <div class="header-right">
-        <label class="filter-toggle">
-          <input type="checkbox" id="filter-ready"> Ready only
-        </label>
         <div class="session-switcher">
           <button id="btn-session" class="btn btn-ghost btn-sm">+ Session ▾</button>
           <div id="session-menu" class="session-menu"></div>
@@ -30,7 +32,6 @@
     <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
     <div id="body">
       <div id="sidebar">
-        <div id="tag-bar"></div>
         <div id="tree-container"></div>
       </div>
       <div id="content"></div>
@@ -71,23 +72,25 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Session Name</label>
-          <input type="text" id="new-session-name" placeholder="e.g. ClientCorp AD Pentest">
+          <label class="form-label">Session Name</label>
+          <input type="text" class="form-input" id="new-session-name" placeholder="e.g. ClientCorp AD Pentest">
         </div>
         <div class="form-group">
-          <label>Target IP</label>
-          <input type="text" id="new-session-target" placeholder="e.g. 10.10.10.5">
+          <label class="form-label">Target IP</label>
+          <input type="text" class="form-input" id="new-session-target" placeholder="e.g. 10.10.10.5">
         </div>
         <div class="form-group">
-          <label>Domain</label>
-          <input type="text" id="new-session-domain" placeholder="e.g. corp.local">
+          <label class="form-label">Domain</label>
+          <input type="text" class="form-input" id="new-session-domain" placeholder="e.g. Muath.local">
         </div>
-        <button class="btn-primary" id="btn-create-session">Create Session</button>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-full" id="btn-create-session">Create Session</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <script src="js/data.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/data.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>

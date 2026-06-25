@@ -54,6 +54,19 @@ function loadPersisted() {
   } catch (e) { state.sessions = []; }
   state.activeSessionId = localStorage.getItem('penotes_activeId') || null;
   if (state.activeSessionId && !activeSession()) state.activeSessionId = null;
+  // Migrate old sessions that predate these fields
+  state.sessions.forEach(sess => {
+    if (!sess.techProgress) sess.techProgress = {};
+    if (!sess.cmdNotes) sess.cmdNotes = {};
+    if (!sess.findings) sess.findings = [];
+    // Migrate old flat findings (had .value field) to new tree format
+    sess.findings = sess.findings.map(f => {
+      if (f.value !== undefined && f.title === undefined) {
+        return { id: f.id, title: f.value, type: f.type, note: f.note || '', values: [], children: [], addedAt: f.addedAt };
+      }
+      return f;
+    });
+  });
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────────────────── */
@@ -63,18 +76,296 @@ function getAllCommands(tech) {
 }
 
 function renderCommandCardHtml(cmd, tacticId, techId) {
+  const note = getCmdNote(cmd.id);
   return `
-    <div class="command-card">
+    <div class="command-card" data-cmd-id="${escHtml(cmd.id)}">
       <div class="command-card-header">
         <span class="command-label">${escHtml(cmd.label)}</span>
         ${cmd.os ? `<span class="command-os">${escHtml(cmd.os)}</span>` : ''}
       </div>
       <div class="command-body">${renderCommandText(cmd.command)}</div>
+      <div class="cmd-note-preview"${note ? '' : ' style="display:none"'}>${escHtml(note)}</div>
       <div class="command-footer">
         <span class="command-notes">${escHtml(cmd.notes || '')}</span>
+        <button class="btn-note${note ? ' has-note' : ''}" onclick="toggleCmdNote('${escHtml(cmd.id)}',this)" title="Output note">Note</button>
         <button class="btn-copy" onclick="copyCommand('${escHtml(cmd.id)}','${escHtml(tacticId)}','${escHtml(techId)}',this)">Copy</button>
       </div>
+      <div class="cmd-note-editor" style="display:none">
+        <textarea class="cmd-note-textarea" placeholder="Paste output or notes here…" onblur="saveCmdNote('${escHtml(cmd.id)}',this)"></textarea>
+      </div>
     </div>`;
+}
+
+/* ─── Progress tracking ──────────────────────────────────────────────────────── */
+function renderProgressBar(techId, status) {
+  const btns = [
+    { id: 'in-progress', label: '▶ In Progress', cls: 'prog-ip' },
+    { id: 'done',        label: '✓ Done',        cls: 'prog-done' },
+    { id: 'skipped',     label: '⏭ Skip',        cls: 'prog-skip' },
+  ].map(s => {
+    const active = status === s.id ? ' active' : '';
+    const next = status === s.id ? '' : s.id;
+    return `<button class="prog-btn ${s.cls}${active}" onclick="setTechProgress('${escHtml(techId)}','${next}')">${s.label}</button>`;
+  }).join('');
+  return `<div class="tech-progress-bar">${btns}</div>`;
+}
+
+function setTechProgress(techId, status) {
+  const s = activeSession();
+  if (!s) return;
+  if (status) s.techProgress[techId] = status;
+  else delete s.techProgress[techId];
+  persist();
+  const bar = document.querySelector('.tech-progress-bar');
+  if (bar) bar.outerHTML = renderProgressBar(techId, status || null);
+  buildSidebar();
+}
+
+/* ─── Command notes ──────────────────────────────────────────────────────────── */
+function getCmdNote(cmdId) {
+  const s = activeSession();
+  return (s && s.cmdNotes && s.cmdNotes[cmdId]) || '';
+}
+
+function setCmdNote(cmdId, text) {
+  const s = activeSession();
+  if (!s) return;
+  if (text && text.trim()) s.cmdNotes[cmdId] = text;
+  else delete s.cmdNotes[cmdId];
+  persist();
+}
+
+function toggleCmdNote(cmdId, btnEl) {
+  const card = btnEl.closest('.command-card');
+  if (!card) return;
+  const editor = card.querySelector('.cmd-note-editor');
+  if (!editor) return;
+  const isOpen = editor.style.display !== 'none';
+  editor.style.display = isOpen ? 'none' : '';
+  btnEl.classList.toggle('active', !isOpen);
+  if (!isOpen) {
+    const ta = editor.querySelector('textarea');
+    if (ta) { ta.value = getCmdNote(cmdId); ta.focus(); }
+  }
+}
+
+function saveCmdNote(cmdId, taEl) {
+  setCmdNote(cmdId, taEl.value);
+  const card = taEl.closest('.command-card');
+  if (!card) return;
+  const preview = card.querySelector('.cmd-note-preview');
+  if (!preview) return;
+  const text = taEl.value.trim();
+  preview.textContent = text;
+  preview.style.display = text ? '' : 'none';
+  card.querySelector('.btn-note').classList.toggle('has-note', !!text);
+}
+
+/* ─── Findings log ───────────────────────────────────────────────────────────── */
+const FINDING_TYPES = {
+  cred:  { icon: '🔑', label: 'Credential' },
+  hash:  { icon: '#️⃣', label: 'Hash' },
+  user:  { icon: '👤', label: 'User' },
+  share: { icon: '📁', label: 'Share' },
+  host:  { icon: '🖥', label: 'Host' },
+  flag:  { icon: '🚩', label: 'Flag' },
+  note:  { icon: '📝', label: 'Note' },
+};
+
+const collapsedFindings = new Set();
+
+function _findById(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const found = _findById(n.children || [], id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function _removeById(nodes, id) {
+  const idx = nodes.findIndex(n => n.id === id);
+  if (idx !== -1) { nodes.splice(idx, 1); return true; }
+  for (const n of nodes) {
+    if (_removeById(n.children || [], id)) return true;
+  }
+  return false;
+}
+
+function _refreshFindingsPane() {
+  const s = activeSession();
+  if (!s) return;
+  const pane = document.querySelector('[data-pane="findings"]');
+  if (pane) pane.innerHTML = renderFindingsPane(s);
+}
+
+function toggleFindingNode(id) {
+  if (collapsedFindings.has(id)) collapsedFindings.delete(id);
+  else collapsedFindings.add(id);
+  const body = document.getElementById('fnb-' + id);
+  const chevron = document.getElementById('fnc-' + id);
+  if (body) body.classList.toggle('finding-collapsed', collapsedFindings.has(id));
+  if (chevron) chevron.classList.toggle('collapsed', collapsedFindings.has(id));
+}
+
+function showFindingForm(formId) {
+  const el = document.getElementById(formId);
+  if (!el) return;
+  const wasHidden = el.style.display === 'none' || !el.style.display;
+  el.style.display = wasHidden ? '' : 'none';
+  if (wasHidden) el.querySelector('input,select') && el.querySelector('input').focus();
+}
+
+function submitFinding() {
+  const s = activeSession();
+  if (!s) return;
+  const typeEl  = document.getElementById('finding-type');
+  const titleEl = document.getElementById('finding-title');
+  const noteEl  = document.getElementById('finding-note');
+  const title = titleEl ? titleEl.value.trim() : '';
+  if (!title) { toast('Name required', 'error'); return; }
+  s.findings.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', note: noteEl ? noteEl.value.trim() : '', values: [], children: [], addedAt: Date.now() });
+  persist();
+  if (titleEl) titleEl.value = '';
+  if (noteEl) noteEl.value = '';
+  toast('Finding created', 'success');
+  _refreshFindingsPane();
+}
+
+function submitSubFinding(parentId) {
+  const s = activeSession();
+  if (!s) return;
+  const typeEl  = document.getElementById('fas-type-' + parentId);
+  const titleEl = document.getElementById('fas-title-' + parentId);
+  const noteEl  = document.getElementById('fas-note-' + parentId);
+  const title = titleEl ? titleEl.value.trim() : '';
+  if (!title) { toast('Name required', 'error'); return; }
+  const parent = _findById(s.findings, parentId);
+  if (!parent) return;
+  if (!parent.children) parent.children = [];
+  parent.children.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', note: noteEl ? noteEl.value.trim() : '', values: [], children: [], addedAt: Date.now() });
+  persist();
+  toast('Sub-finding created', 'success');
+  _refreshFindingsPane();
+}
+
+function submitFindingValue(findingId) {
+  const s = activeSession();
+  if (!s) return;
+  const valEl  = document.getElementById('fav-val-' + findingId);
+  const noteEl = document.getElementById('fav-note-' + findingId);
+  const value = valEl ? valEl.value.trim() : '';
+  if (!value) { toast('Value required', 'error'); return; }
+  const f = _findById(s.findings, findingId);
+  if (!f) return;
+  if (!f.values) f.values = [];
+  f.values.push({ id: uid(), value, note: noteEl ? noteEl.value.trim() : '' });
+  persist();
+  toast('Value added', 'success');
+  _refreshFindingsPane();
+}
+
+function deleteFindingValue(findingId, valueId) {
+  const s = activeSession();
+  if (!s) return;
+  const f = _findById(s.findings, findingId);
+  if (!f || !f.values) return;
+  f.values = f.values.filter(v => v.id !== valueId);
+  persist();
+  _refreshFindingsPane();
+}
+
+function deleteFinding(id) {
+  const s = activeSession();
+  if (!s) return;
+  _removeById(s.findings, id);
+  collapsedFindings.delete(id);
+  persist();
+  _refreshFindingsPane();
+}
+
+function _countFindings(nodes) {
+  return (nodes || []).reduce((n, f) => n + 1 + _countFindings(f.children), 0);
+}
+
+function _typeOptions(selectedKey) {
+  return Object.entries(FINDING_TYPES)
+    .map(([k, v]) => `<option value="${k}"${k === selectedKey ? ' selected' : ''}>${v.icon} ${v.label}</option>`)
+    .join('');
+}
+
+function renderFindingItem(f, depth) {
+  const ft = FINDING_TYPES[f.type] || { icon: '📋', label: 'Note' };
+  const isCollapsed = collapsedFindings.has(f.id);
+  const hdrPad = 10 + depth * 20;
+  const bodyPad = 30 + depth * 20;
+
+  const valuesHtml = (f.values || []).map(v => `
+    <div class="finding-val-row" style="padding-left:${bodyPad}px">
+      <span class="finding-val-dot">·</span>
+      <span class="finding-val-text">${escHtml(v.value)}</span>
+      ${v.note ? `<span class="finding-val-note">— ${escHtml(v.note)}</span>` : ''}
+      <button class="finding-del" onclick="deleteFindingValue('${escHtml(f.id)}','${escHtml(v.id)}')">✕</button>
+    </div>`).join('');
+
+  const childrenHtml = (f.children || []).map(c => renderFindingItem(c, depth + 1)).join('');
+
+  return `
+    <div class="finding-node" id="fn-${escHtml(f.id)}">
+      <div class="finding-node-hdr" style="padding-left:${hdrPad}px">
+        <button class="finding-chevron${isCollapsed ? ' collapsed' : ''}" id="fnc-${escHtml(f.id)}" onclick="toggleFindingNode('${escHtml(f.id)}')">▼</button>
+        <span class="finding-node-icon">${ft.icon}</span>
+        <span class="finding-node-title">${escHtml(f.title)}</span>
+        ${f.note ? `<span class="finding-node-note">${escHtml(f.note)}</span>` : ''}
+        <div class="finding-node-acts">
+          <button class="finding-act-btn" onclick="showFindingForm('fav-${escHtml(f.id)}')">+ Value</button>
+          <button class="finding-act-btn" onclick="showFindingForm('fas-${escHtml(f.id)}')">+ Sub</button>
+          <button class="finding-del" onclick="deleteFinding('${escHtml(f.id)}')">✕</button>
+        </div>
+      </div>
+      <div class="finding-node-body${isCollapsed ? ' finding-collapsed' : ''}" id="fnb-${escHtml(f.id)}">
+        ${valuesHtml}
+        <div class="finding-inline-form" id="fav-${escHtml(f.id)}" style="display:none;padding-left:${bodyPad}px">
+          <input class="form-input mono" id="fav-val-${escHtml(f.id)}" placeholder="Value…" onkeydown="if(event.key==='Enter')submitFindingValue('${escHtml(f.id)}')" />
+          <input class="form-input" id="fav-note-${escHtml(f.id)}" placeholder="Note (optional)" onkeydown="if(event.key==='Enter')submitFindingValue('${escHtml(f.id)}')" />
+          <div class="finding-form-btns">
+            <button class="btn btn-primary btn-sm" onclick="submitFindingValue('${escHtml(f.id)}')">Add</button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fav-${escHtml(f.id)}').style.display='none'">Cancel</button>
+          </div>
+        </div>
+        <div class="finding-inline-form" id="fas-${escHtml(f.id)}" style="display:none;padding-left:${bodyPad}px">
+          <select class="form-select" id="fas-type-${escHtml(f.id)}">${_typeOptions(f.type)}</select>
+          <input class="form-input" id="fas-title-${escHtml(f.id)}" placeholder="Sub-finding name…" onkeydown="if(event.key==='Enter')submitSubFinding('${escHtml(f.id)}')" />
+          <input class="form-input" id="fas-note-${escHtml(f.id)}" placeholder="Note (optional)" onkeydown="if(event.key==='Enter')submitSubFinding('${escHtml(f.id)}')" />
+          <div class="finding-form-btns">
+            <button class="btn btn-primary btn-sm" onclick="submitSubFinding('${escHtml(f.id)}')">Create</button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fas-${escHtml(f.id)}').style.display='none'">Cancel</button>
+          </div>
+        </div>
+        ${childrenHtml}
+      </div>
+    </div>`;
+}
+
+function renderFindingsPane(sess) {
+  const findings = sess.findings || [];
+
+  const listHtml = findings.length === 0
+    ? `<div class="empty-state" style="padding:20px 0">
+        <div style="font-size:28px;margin-bottom:6px">📋</div>
+        <div>No findings yet.</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Create a finding to start logging credentials, hashes, users, and loot.</div>
+      </div>`
+    : findings.map(f => renderFindingItem(f, 0)).join('');
+
+  return `
+    <div class="finding-add-form">
+      <select class="form-select" id="finding-type">${_typeOptions('cred')}</select>
+      <input class="form-input" id="finding-title" placeholder="Finding name (e.g. Domain Users, NTLM Hashes)" onkeydown="if(event.key==='Enter')submitFinding()" />
+      <input class="form-input" id="finding-note" placeholder="Note (optional)" onkeydown="if(event.key==='Enter')submitFinding()" />
+      <button class="btn btn-primary btn-sm" onclick="submitFinding()">Create</button>
+    </div>
+    <div class="finding-list">${listHtml}</div>`;
 }
 
 /* ─── Readiness ──────────────────────────────────────────────────────────────── */
@@ -176,7 +467,12 @@ function buildSidebar() {
           const hasMatch = tactic.techniques.some(t =>
             t.name.toLowerCase().includes(q) ||
             tactic.name.toLowerCase().includes(q) ||
-            (t.tags || []).some(tag => tag.toLowerCase().includes(q))
+            (t.tags || []).some(tag => tag.toLowerCase().includes(q)) ||
+            (t.description || '').toLowerCase().includes(q) ||
+            getAllCommands(t).some(cmd =>
+              cmd.label.toLowerCase().includes(q) ||
+              cmd.command.toLowerCase().includes(q)
+            )
           );
           if (!hasMatch) return false;
         }
@@ -202,7 +498,11 @@ function buildSidebar() {
       let matchingTechs = tactic.techniques.filter(t => {
         if (q && !t.name.toLowerCase().includes(q) &&
             !tactic.name.toLowerCase().includes(q) &&
-            !(t.tags || []).some(tag => tag.toLowerCase().includes(q))) return false;
+            !(t.tags || []).some(tag => tag.toLowerCase().includes(q)) &&
+            !(t.description || '').toLowerCase().includes(q) &&
+            !getAllCommands(t).some(cmd =>
+              cmd.label.toLowerCase().includes(q) || cmd.command.toLowerCase().includes(q)
+            )) return false;
         if (state.filterReady && activeSession()) {
           const r = techniqueReadiness(t);
           if (r.status !== 'ready') return false;
@@ -227,9 +527,12 @@ function buildSidebar() {
         const r = activeSession() ? techniqueReadiness(tech) : null;
         const isActive = state.selectedNodeId === tech.id ? ' active' : '';
         const badge = r ? `<span class="tree-badge ${r.status}"></span>` : '';
+        const sess = activeSession();
+        const prog = sess ? sess.techProgress[tech.id] : null;
+        const progIcon = { 'in-progress': '▶', 'done': '✅', 'skipped': '⏭' }[prog] || '📄';
         html += `
           <div class="tree-item tree-technique grouped${isActive}" data-technique="${escHtml(tech.id)}" data-tactic="${escHtml(tactic.id)}">
-            <span>📄 ${escHtml(tech.name)}</span>
+            <span>${progIcon} ${escHtml(tech.name)}</span>
             ${badge}
           </div>
         `;
@@ -307,6 +610,55 @@ function buildSidebar() {
   });
 }
 
+/* ─── Theory page ───────────────────────────────────────────────────────────── */
+function renderTheoryBody(theory) {
+  const phasesHtml = (theory.phases || []).map((p, i) => `
+    <div class="theory-phase">
+      <div class="theory-phase-num">${i + 1}</div>
+      <div class="theory-phase-content">
+        <div class="theory-phase-head">
+          <span class="theory-phase-icon">${p.icon}</span>
+          <span class="theory-phase-name">${escHtml(p.name)}</span>
+        </div>
+        <div class="theory-phase-desc">${escHtml(p.description)}</div>
+        <div class="theory-phase-items">${(p.items || []).map(it => `<span class="theory-tag">${escHtml(it)}</span>`).join('')}</div>
+      </div>
+    </div>`).join('');
+
+  const conceptsHtml = (theory.concepts || []).map(c => {
+    const flowHtml = c.flow ? `<div class="theory-flow">${c.flow.map(f => `<span class="theory-flow-step">${escHtml(f)}</span>`).join('<span class="theory-flow-arrow">→</span>')}</div>` : '';
+    const itemsHtml = c.items ? `<div class="theory-concept-items">${c.items.map(it => `<span class="theory-tag theory-tag-sm">${escHtml(it)}</span>`).join('')}</div>` : '';
+    return `
+      <div class="theory-concept">
+        <div class="theory-concept-name">${escHtml(c.name)}</div>
+        <div class="theory-concept-desc">${escHtml(c.description)}</div>
+        ${flowHtml}${itemsHtml}
+      </div>`;
+  }).join('');
+
+  const toolsHtml = (theory.tools || []).map(t => `
+    <div class="theory-tool">
+      <div class="theory-tool-name">${escHtml(t.name)}</div>
+      <div class="theory-tool-purpose">${escHtml(t.purpose)}</div>
+      <div class="theory-tool-tags">${(t.tags || []).map(tag => `<span class="theory-tag theory-tag-sm">${escHtml(tag)}</span>`).join('')}</div>
+    </div>`).join('');
+
+  return `
+    ${theory.intro ? `<p class="theory-intro">${escHtml(theory.intro)}</p>` : ''}
+    <div class="theory-section">
+      <div class="theory-section-title">⚔️ Attack Chain</div>
+      <div class="theory-phases">${phasesHtml}</div>
+    </div>
+    <div class="theory-section">
+      <div class="theory-section-title">🧠 Key Concepts</div>
+      <div class="theory-concepts">${conceptsHtml}</div>
+    </div>
+    <div class="theory-section">
+      <div class="theory-section-title">🔧 Tools</div>
+      <div class="theory-tools">${toolsHtml}</div>
+    </div>`;
+}
+
 /* ─── Content rendering ──────────────────────────────────────────────────────── */
 function selectTechnique(tacticId, techId) {
   const tactic = TACTICS.find(t => t.id === tacticId);
@@ -325,6 +677,9 @@ function selectTechnique(tacticId, techId) {
 
   const tagsHtml = (tech.tags || []).map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
   const readinessBadgeClass = activeSession() ? r.status : 'missing';
+  const sess = activeSession();
+  const progress = sess ? sess.techProgress[tech.id] : null;
+  const progressHtml = sess ? renderProgressBar(tech.id, progress) : '';
 
   let commandsHtml = '';
   if (tech.subtechniques) {
@@ -346,15 +701,19 @@ function selectTechnique(tacticId, techId) {
     });
   }
 
+  const bodyHtml = tech.theory
+    ? renderTheoryBody(tech.theory)
+    : `${tech.subtechniques ? '' : '<div class="commands-label">Commands</div>'}${commandsHtml}`;
+
   document.getElementById('content').innerHTML = `
     <div class="technique-header">
       <div class="technique-title">${escHtml(tech.name)}</div>
-      <span class="readiness-badge ${escHtml(readinessBadgeClass)}">${readinessLabel}</span>
+      ${tech.theory ? '' : `<span class="readiness-badge ${escHtml(readinessBadgeClass)}">${readinessLabel}</span>`}
     </div>
     <div class="technique-tags">${tagsHtml}</div>
-    <div class="technique-desc">${escHtml(tech.description)}</div>
-    ${tech.subtechniques ? '' : '<div class="commands-label">Commands</div>'}
-    ${commandsHtml}
+    ${tech.theory ? '' : progressHtml}
+    ${tech.description && !tech.theory ? `<div class="technique-desc">${escHtml(tech.description)}</div>` : ''}
+    ${bodyHtml}
   `;
 
   // Bind variable click handlers
@@ -384,10 +743,12 @@ function renderSessionDetail(sid) {
     <div class="stab-bar">
       <button class="stab-btn" data-tab="ready" onclick="switchSessionTab('ready')">▶ Ready</button>
       <button class="stab-btn" data-tab="discover" onclick="switchSessionTab('discover')">🔍 Discover</button>
+      <button class="stab-btn" data-tab="findings" onclick="switchSessionTab('findings')">📋 Findings${sess.findings && sess.findings.length > 0 ? ` <span class="stab-count">${_countFindings(sess.findings)}</span>` : ''}</button>
       <button class="stab-btn stab-btn-vars-only" data-tab="vars" onclick="switchSessionTab('vars')">⚙ Vars</button>
     </div>
     <div class="stab-pane" data-pane="ready">${renderReadyPane(sess)}</div>
     <div class="stab-pane" data-pane="discover" style="display:none">${renderDiscoverPane(sess)}</div>
+    <div class="stab-pane" data-pane="findings" style="display:none">${renderFindingsPane(sess)}</div>
     <div class="stab-pane" data-pane="vars" style="display:none">${renderVarsPane(sess)}</div>
     <div style="padding:4px 0 16px;display:flex;gap:8px">
       <button class="btn btn-ghost btn-sm" onclick="openAddVarModal()">+ Add Variable</button>
@@ -432,7 +793,7 @@ function renderReadyPane(sess) {
         return vars.length > 0 && vars.every(v => sess.vars[v] && sess.vars[v].trim());
       });
       if (readyCmds.length > 0) {
-        groups.push({ techName: tech.name, tacticName: tactic.name, cmds: readyCmds });
+        groups.push({ techName: tech.name, tacticName: tactic.name, tacticId: tactic.id, techId: tech.id, cmds: readyCmds });
       }
     });
   });
@@ -449,18 +810,9 @@ function renderReadyPane(sess) {
   let html = `<div class="ready-count">${total} command${total !== 1 ? 's' : ''} ready across ${groups.length} technique${groups.length !== 1 ? 's' : ''}</div>`;
 
   groups.forEach(group => {
-    html += `<div class="ready-tech-header">${escHtml(group.tacticName)} › ${escHtml(group.techName)}</div>`;
+    html += `<div class="ready-tech-header tech-link" onclick="goToTechnique('${escHtml(group.tacticId)}','${escHtml(group.techId)}')">${escHtml(group.tacticName)} › ${escHtml(group.techName)} <span class="tech-link-arrow">↗</span></div>`;
     group.cmds.forEach(cmd => {
-      html += `
-        <div class="command-card" data-raw-cmd="${escHtml(cmd.command)}">
-          <div class="command-card-header">
-            <span class="command-label">${escHtml(cmd.label)}</span>
-            ${cmd.os ? `<span class="command-os">${escHtml(cmd.os)}</span>` : ''}
-            <button class="btn-copy" onclick="copyRawCommand(this.closest('[data-raw-cmd]').dataset.rawCmd, this)">Copy</button>
-          </div>
-          <div class="command-body">${renderCommandText(cmd.command)}</div>
-          ${cmd.notes ? `<div class="command-notes">${escHtml(cmd.notes)}</div>` : ''}
-        </div>`;
+      html += renderCommandCardHtml(cmd, group.tacticId, group.techId);
     });
   });
 
@@ -719,7 +1071,10 @@ function createSession() {
     name,
     target,
     createdAt: Date.now(),
-    vars: {}
+    vars: {},
+    techProgress: {},
+    cmdNotes: {},
+    findings: [],
   };
 
   if (target) sess.vars['$$IP'] = target;
@@ -860,8 +1215,9 @@ function toggleSidebar() {
 }
 
 /* ─── Filter ─────────────────────────────────────────────────────────────────── */
-function toggleFilter(checked) {
-  state.filterReady = checked;
+function toggleFilterBtn(btnEl) {
+  state.filterReady = !state.filterReady;
+  btnEl.classList.toggle('active', state.filterReady);
   buildSidebar();
 }
 
@@ -896,6 +1252,68 @@ function clearTags() {
   state.activeTags = [];
   buildTagBar();
   buildSidebar();
+}
+
+/* ─── Navigation helper ──────────────────────────────────────────────────────── */
+function goToTechnique(tacticId, techId) {
+  const searchInput = document.querySelector('.header-search');
+  if (searchInput) searchInput.value = '';
+  state.searchQuery = '';
+  state.selectedNodeId = techId;
+  selectTechnique(tacticId, techId);
+  closeSidebarIfMobile();
+}
+
+/* ─── Tool / Search page ─────────────────────────────────────────────────────── */
+function renderToolPage(q) {
+  const ql = q.toLowerCase();
+  const groups = [];
+
+  TACTICS.forEach(tactic => {
+    tactic.techniques.forEach(tech => {
+      const cmds = getAllCommands(tech).filter(cmd =>
+        cmd.command.toLowerCase().includes(ql) ||
+        cmd.label.toLowerCase().includes(ql) ||
+        (cmd.notes || '').toLowerCase().includes(ql)
+      );
+      if (cmds.length > 0) groups.push({ tactic, tech, cmds });
+    });
+  });
+
+  const content = document.getElementById('content');
+
+  if (groups.length === 0) {
+    content.innerHTML = `
+      <div class="tool-page-header">
+        <div class="tool-page-title">🔍 "${escHtml(q)}"</div>
+        <div class="tool-page-count">No commands found</div>
+      </div>
+      <div class="empty-state">
+        <div style="font-size:32px;margin-bottom:8px">🔍</div>
+        <div>No commands match "<strong>${escHtml(q)}</strong>".</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Try the tool name, a flag, or a keyword.</div>
+      </div>`;
+    return;
+  }
+
+  const totalCmds = groups.reduce((n, g) => n + g.cmds.length, 0);
+
+  let html = `
+    <div class="tool-page-header">
+      <div class="tool-page-title">🔍 "${escHtml(q)}"</div>
+      <div class="tool-page-count">${totalCmds} command${totalCmds !== 1 ? 's' : ''} across ${groups.length} technique${groups.length !== 1 ? 's' : ''}</div>
+    </div>`;
+
+  groups.forEach(({ tactic, tech, cmds }) => {
+    html += `<div class="ready-tech-header tech-link" onclick="goToTechnique('${escHtml(tactic.id)}','${escHtml(tech.id)}')">${escHtml(tactic.name)} › ${escHtml(tech.name)} <span class="tech-link-arrow">↗</span></div>`;
+    cmds.forEach(cmd => { html += renderCommandCardHtml(cmd, tactic.id, tech.id); });
+  });
+
+  content.innerHTML = html;
+
+  content.querySelectorAll('.var-missing').forEach(el => {
+    el.addEventListener('click', () => openVarModal(el.dataset.var));
+  });
 }
 
 /* ─── Welcome screen ─────────────────────────────────────────────────────────── */
@@ -951,16 +1369,23 @@ document.addEventListener('DOMContentLoaded', () => {
   buildSidebar();
   buildRightPanel();
 
-  // Sidebar search
+  // Sidebar search + tool page
   const searchInput = document.querySelector('.header-search');
   searchInput.addEventListener('input', e => {
-    state.searchQuery = e.target.value;
+    const q = e.target.value.trim();
+    state.searchQuery = q;
     buildSidebar();
+    if (q.length >= 2) {
+      renderToolPage(q);
+    } else if (q.length === 0) {
+      if (state.selectedNodeId) refreshAll();
+      else document.getElementById('content').innerHTML = welcomeHtml();
+    }
   });
 
-  // Filter checkbox
-  document.getElementById('filter-ready').addEventListener('change', e => {
-    toggleFilter(e.target.checked);
+  // Filter button
+  document.getElementById('btn-filter-ready').addEventListener('click', function() {
+    toggleFilterBtn(this);
   });
 
   // Session button
