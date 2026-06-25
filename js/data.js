@@ -268,6 +268,12 @@ const ALL_FILTER_TAGS = ['Windows', 'Linux', 'Active Directory', 'Kerberos', 'Ne
 /* ─── Sidebar Groups ─────────────────────────────────────────────────────────── */
 const TACTIC_GROUPS = [
   {
+    id: 'group-methodologies',
+    name: 'Methodologies',
+    icon: '📚',
+    tacticIds: ['methodologies'],
+  },
+  {
     id: 'group-recon',
     name: 'Reconnaissance',
     icon: '🔍',
