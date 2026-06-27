@@ -746,6 +746,8 @@ html, body {
   white-space: nowrap;
 }
 .theory-tag-sm { font-size: 10px; padding: 1px 6px; }
+.theory-tag-link { cursor: pointer; color: var(--accent); border-color: rgba(137,180,250,0.3); }
+.theory-tag-link:hover { background: rgba(137,180,250,0.18); }
 
 @media (max-width: 700px) {
   .theory-concepts, .theory-tools { grid-template-columns: 1fr; }

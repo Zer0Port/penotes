@@ -621,7 +621,11 @@ function renderTheoryBody(theory) {
           <span class="theory-phase-name">${escHtml(p.name)}</span>
         </div>
         <div class="theory-phase-desc">${escHtml(p.description)}</div>
-        <div class="theory-phase-items">${(p.items || []).map(it => `<span class="theory-tag">${escHtml(it)}</span>`).join('')}</div>
+        <div class="theory-phase-items">${(p.items || []).map((it, i) => {
+          const lnk = p.itemLinks && p.itemLinks[i];
+          if (lnk) return `<span class="theory-tag theory-tag-link" onclick="goToTechnique('${escHtml(lnk.tacticId)}','${escHtml(lnk.techId)}')">${escHtml(it)}</span>`;
+          return `<span class="theory-tag">${escHtml(it)}</span>`;
+        }).join('')}</div>
       </div>
     </div>`).join('');
 

