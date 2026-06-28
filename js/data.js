@@ -1,4 +1,4 @@
-/* ─── Variables ──────────────────────────────────────────────────────────────── */
+﻿/* ─── Variables ──────────────────────────────────────────────────────────────── */
 const VARIABLES = {
   '$$IP': {
     name: '$$IP',
@@ -460,6 +460,89 @@ const TACTICS = [
           ]
         },
         subtechniques: []
+      },
+      /* ── Web Application Methodology ─────────────────────────────────── */
+      {
+        id: 'web-methodology',
+        name: 'Web Application',
+        description: 'Full web app pentest lifecycle from recon to post-exploitation.',
+        tags: ['methodology', 'overview', 'web'],
+        theory: {
+          intro: 'Web application pentesting follows a structured lifecycle: map the attack surface, fingerprint technologies, test every input vector for injection, abuse authentication and access control flaws, then chain findings to demonstrate real impact. Every parameter, header, and endpoint is a potential vulnerability.',
+          phases: [
+            {
+              icon: '🔍',
+              name: 'Reconnaissance',
+              description: 'Passive and active information gathering — enumerate subdomains, discover technologies, and map the attack surface before touching the app.',
+              items: ['Subdomain Enumeration', 'DNS Recon', 'Google Dorking', 'OSINT / Hunter.io', 'Wayback Machine', 'Technology Fingerprinting'],
+              itemLinks: { 5: { tacticId: 'webapp', techId: 'web-recon' } },
+            },
+            {
+              icon: '🗺️',
+              name: 'Scanning & Enumeration',
+              description: 'Actively map directories, parameters, and endpoints. Identify WAF, CMS, and framework versions.',
+              items: ['Directory Bruteforce', 'Parameter Discovery', 'Crawling & Spidering', 'WAF Detection', 'nuclei Scan'],
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-recon' }, 1: { tacticId: 'webapp', techId: 'web-recon' }, 3: { tacticId: 'webapp', techId: 'web-recon' }, 4: { tacticId: 'webapp', techId: 'web-recon' } },
+            },
+            {
+              icon: '🔐',
+              name: 'Authentication Testing',
+              description: 'Test login mechanisms, session handling, tokens, and multi-factor authentication for bypasses and weaknesses.',
+              items: ['Default Credentials', 'Brute Force Login', 'Password Spraying', 'JWT Attacks', 'OAuth Misconfig', 'Session Fixation', 'MFA Bypass'],
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-auth' }, 1: { tacticId: 'webapp', techId: 'web-auth' }, 2: { tacticId: 'webapp', techId: 'web-auth' }, 3: { tacticId: 'webapp', techId: 'web-auth' } },
+            },
+            {
+              icon: '💉',
+              name: 'Injection Testing',
+              description: 'Test every input vector for injection vulnerabilities — SQL, XSS, SSTI, command injection, SSRF, and XXE.',
+              items: ['SQL Injection', 'Cross-Site Scripting (XSS)', 'Server-Side Template Injection', 'Command Injection', 'SSRF', 'XXE', 'LDAP Injection'],
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-sqli-detect' }, 1: { tacticId: 'webapp', techId: 'web-xss' }, 3: { tacticId: 'webapp', techId: 'web-cmdi' }, 4: { tacticId: 'webapp', techId: 'web-ssrf' }, 5: { tacticId: 'webapp', techId: 'web-xxe' } },
+            },
+            {
+              icon: '📁',
+              name: 'File & Path Testing',
+              description: 'Abuse file upload endpoints and path handling to achieve LFI, RFI, or remote code execution.',
+              items: ['File Upload Bypass', 'Local File Inclusion (LFI)', 'Path Traversal', 'Remote File Inclusion (RFI)'],
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-upload' }, 1: { tacticId: 'webapp', techId: 'web-lfi' }, 2: { tacticId: 'webapp', techId: 'web-lfi' }, 3: { tacticId: 'webapp', techId: 'web-lfi' } },
+            },
+            {
+              icon: '🔓',
+              name: 'Access Control Testing',
+              description: 'Test for IDOR, broken access control, privilege escalation, and client-side enforcement flaws.',
+              items: ['IDOR / BAC', 'Horizontal Privilege Escalation', 'Vertical Privilege Escalation', 'CORS Misconfiguration', 'CSRF'],
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-idor' }, 1: { tacticId: 'webapp', techId: 'web-idor' }, 2: { tacticId: 'webapp', techId: 'web-idor' } },
+            },
+            {
+              icon: '🏆',
+              name: 'Post Exploitation',
+              description: 'Chain findings to demonstrate real-world impact — data exfiltration, pivoting to internal services, or persistent access.',
+              items: ['Data Exfiltration via SQLi', 'Credential Harvesting', 'Internal Pivot via SSRF', 'RCE via File Upload', 'Reporting & PoC'],
+              itemLinks: { 2: { tacticId: 'webapp', techId: 'web-ssrf' }, 3: { tacticId: 'webapp', techId: 'web-upload' } },
+            },
+          ],
+          concepts: [
+            { title: 'OWASP Top 10', body: 'The ten most critical web security risks: broken access control, cryptographic failures, injection, insecure design, security misconfiguration, vulnerable components, authentication failures, software integrity failures, logging failures, and SSRF.' },
+            { title: 'Same-Origin Policy (SOP)', body: 'Browser security model preventing a page at origin A from reading responses from origin B. CORS headers explicitly relax SOP. Misconfigured CORS (Access-Control-Allow-Origin: *) can leak sensitive data to attacker-controlled pages.' },
+            { title: 'JWT Attacks', body: 'JSON Web Tokens can be exploited via alg:none (remove signature), RS256→HS256 confusion (sign with public key), weak secrets (brute-force with hashcat), or kid parameter injection pointing to attacker-controlled key.' },
+            { title: 'WAF Bypass', body: 'Web Application Firewalls block common payloads by signature matching. Bypass techniques: case variation (SeLeCt), comment injection (SEL/**/ECT), URL/double encoding (%27 → %2527), HTTP parameter pollution, chunked transfer encoding.' },
+            { title: 'OAuth 2.0 Flows', body: 'OAuth misconfigurations include: open redirect in redirect_uri allowing token theft, state parameter missing enabling CSRF, implicit flow leaking tokens in URL fragments, and scope manipulation. Always test redirect_uri validation and PKCE enforcement.' },
+            { title: 'Content Security Policy (CSP)', body: 'HTTP header restricting which resources a page can load. Weak CSPs (unsafe-inline, data:, wildcard sources) allow XSS. Test via report-uri or browser console errors. CSP bypass via JSONP endpoints, Angular CSP bypass, or allowed-host misuse.' },
+          ],
+          tools: [
+            { name: 'Burp Suite', use: 'Intercepting proxy, active scanner, Repeater, Intruder, and extension platform — the core web app testing tool' },
+            { name: 'ffuf', use: 'Fast web fuzzer — directories, parameters, vhosts, headers' },
+            { name: 'feroxbuster', use: 'Recursive directory brute-forcer with auto-discovery' },
+            { name: 'sqlmap', use: 'Automated SQL injection detection, fingerprinting, and data extraction' },
+            { name: 'nuclei', use: 'Template-based scanner for CVEs, misconfigurations, and known vulnerabilities' },
+            { name: 'whatweb', use: 'Technology fingerprinting — CMS, server, framework, and plugin detection' },
+            { name: 'wafw00f', use: 'WAF detection and fingerprinting' },
+            { name: 'arjun', use: 'Hidden GET/POST parameter discovery via wordlists and heuristics' },
+            { name: 'nikto', use: 'Web server misconfiguration and vulnerability scanner' },
+            { name: 'wfuzz', use: 'Fuzzer for parameters, cookies, headers, and authentication fields' },
+            { name: 'amass', use: 'Subdomain enumeration and attack surface mapping via OSINT' },
+            { name: 'httpx', use: 'Fast HTTP probing — title, status code, tech detection across many hosts' },
+          ],
+        },
       },
     ],
   },
