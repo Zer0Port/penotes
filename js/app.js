@@ -1220,6 +1220,10 @@ function toggleSidebar() {
 
 /* ─── Filter ─────────────────────────────────────────────────────────────────── */
 function toggleFilterBtn(btnEl) {
+  if (!activeSession()) {
+    toast('Open a session first to use the Ready filter', 'info');
+    return;
+  }
   state.filterReady = !state.filterReady;
   btnEl.classList.toggle('active', state.filterReady);
   buildSidebar();
