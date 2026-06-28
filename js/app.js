@@ -3,7 +3,7 @@ const state = {
   sessions: [],          // all saved sessions
   activeSessionId: null, // currently selected session id
   selectedNodeId: null,  // currently selected tree node (tactic/technique/session)
-  filterReady: false,    // show only ready techniques
+  toolSearch: false,     // tool search mode (vs technique name search)
   searchQuery: '',       // sidebar search string
   activeTags: [],        // active tag-filter chips
   sessionTab: 'ready',   // last active session detail tab
@@ -500,13 +500,8 @@ function buildSidebar() {
             !tactic.name.toLowerCase().includes(q) &&
             !(t.tags || []).some(tag => tag.toLowerCase().includes(q)) &&
             !(t.description || '').toLowerCase().includes(q) &&
-            !getAllCommands(t).some(cmd =>
-              cmd.label.toLowerCase().includes(q) || cmd.command.toLowerCase().includes(q)
-            )) return false;
-        if (state.filterReady && activeSession()) {
-          const r = techniqueReadiness(t);
-          if (r.status !== 'ready') return false;
-        }
+            !(t.subtechniques || []).some(st => st.name.toLowerCase().includes(q))
+            ) return false;
         return true;
       });
 
@@ -1220,12 +1215,17 @@ function toggleSidebar() {
 
 /* ─── Filter ─────────────────────────────────────────────────────────────────── */
 function toggleFilterBtn(btnEl) {
-  if (!activeSession()) {
-    toast('Open a session first to use the Ready filter', 'info');
-    return;
+  state.toolSearch = !state.toolSearch;
+  btnEl.classList.toggle('active', state.toolSearch);
+  const searchInput = document.querySelector('.header-search');
+  searchInput.placeholder = state.toolSearch ? 'Search tools & commands...' : 'Search techniques...';
+  const q = state.searchQuery;
+  if (state.toolSearch && q.length >= 2) {
+    renderToolPage(q);
+  } else if (!state.toolSearch) {
+    if (state.selectedNodeId) refreshAll();
+    else document.getElementById('content').innerHTML = welcomeHtml();
   }
-  state.filterReady = !state.filterReady;
-  btnEl.classList.toggle('active', state.filterReady);
   buildSidebar();
 }
 
@@ -1383,7 +1383,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const q = e.target.value.trim();
     state.searchQuery = q;
     buildSidebar();
-    if (q.length >= 2) {
+    if (state.toolSearch && q.length >= 2) {
       renderToolPage(q);
     } else if (q.length === 0) {
       if (state.selectedNodeId) refreshAll();
