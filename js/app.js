@@ -597,9 +597,12 @@ function buildSidebar() {
   tree.querySelectorAll('[data-session]').forEach(el => {
     el.addEventListener('click', () => {
       const sid = el.dataset.session;
+      state.activeSessionId = sid;
+      persist();
       state.selectedNodeId = 'session-' + sid;
       renderSessionDetail(sid);
       buildSidebar();
+      buildRightPanel();
       closeSidebarIfMobile();
     });
   });
@@ -681,7 +684,9 @@ function selectTechnique(tacticId, techId) {
   const progressHtml = sess ? renderProgressBar(tech.id, progress) : '';
 
   let commandsHtml = '';
-  if (tech.subtechniques) {
+  if (tech.theory) {
+    // theory pages don't need command rendering
+  } else if (tech.subtechniques) {
     tech.subtechniques.forEach(sub => {
       const cmdsHtml = sub.commands.map(cmd => renderCommandCardHtml(cmd, tactic.id, tech.id)).join('');
       commandsHtml += `
@@ -1128,10 +1133,10 @@ function switchSession(sid) {
   persist();
   closeSessionMenu();
   toast('Session switched', 'info');
+  if (state.selectedNodeId && state.selectedNodeId.startsWith('session-')) {
+    state.selectedNodeId = 'session-' + sid;
+  }
   refreshAll();
-  state.selectedNodeId = 'session-' + sid;
-  renderSessionDetail(sid);
-  buildSidebar();
 }
 
 function confirmDeleteSession(sid) {

