@@ -58,7 +58,10 @@ function loadPersisted() {
   state.sessions.forEach(sess => {
     if (!sess.techProgress) sess.techProgress = {};
     if (!sess.cmdNotes) sess.cmdNotes = {};
+    if (!sess.techNotes) sess.techNotes = {};
     if (!sess.findings) sess.findings = [];
+    if (!sess.targets) sess.targets = [];
+    if (!('activeTargetId' in sess)) sess.activeTargetId = null;
     // Migrate old flat findings (had .value field) to new tree format
     sess.findings = sess.findings.map(f => {
       if (f.value !== undefined && f.title === undefined) {
@@ -166,6 +169,7 @@ const FINDING_TYPES = {
   cred:  { icon: '🔑', label: 'Credential' },
   hash:  { icon: '#️⃣', label: 'Hash' },
   user:  { icon: '👤', label: 'User' },
+  vuln:  { icon: '⚠️', label: 'Vulnerability' },
   share: { icon: '📁', label: 'Share' },
   host:  { icon: '🖥', label: 'Host' },
   flag:  { icon: '🚩', label: 'Flag' },
@@ -221,13 +225,14 @@ function submitFinding() {
   if (!s) return;
   const typeEl  = document.getElementById('finding-type');
   const titleEl = document.getElementById('finding-title');
-  const noteEl  = document.getElementById('finding-note');
+  const bodyEl  = document.getElementById('finding-body');
   const title = titleEl ? titleEl.value.trim() : '';
   if (!title) { toast('Name required', 'error'); return; }
-  s.findings.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', note: noteEl ? noteEl.value.trim() : '', values: [], children: [], addedAt: Date.now() });
+  const body = bodyEl ? bodyEl.value.trim() : '';
+  s.findings.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', body, values: [], children: [], addedAt: Date.now() });
   persist();
   if (titleEl) titleEl.value = '';
-  if (noteEl) noteEl.value = '';
+  if (bodyEl)  bodyEl.value  = '';
   toast('Finding created', 'success');
   _refreshFindingsPane();
 }
@@ -235,15 +240,16 @@ function submitFinding() {
 function submitSubFinding(parentId) {
   const s = activeSession();
   if (!s) return;
-  const typeEl  = document.getElementById('fas-type-' + parentId);
+  const typeEl  = document.getElementById('fas-type-'  + parentId);
   const titleEl = document.getElementById('fas-title-' + parentId);
-  const noteEl  = document.getElementById('fas-note-' + parentId);
+  const bodyEl  = document.getElementById('fas-body-'  + parentId);
   const title = titleEl ? titleEl.value.trim() : '';
   if (!title) { toast('Name required', 'error'); return; }
+  const body = bodyEl ? bodyEl.value.trim() : '';
   const parent = _findById(s.findings, parentId);
   if (!parent) return;
   if (!parent.children) parent.children = [];
-  parent.children.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', note: noteEl ? noteEl.value.trim() : '', values: [], children: [], addedAt: Date.now() });
+  parent.children.push({ id: uid(), title, type: typeEl ? typeEl.value : 'note', body, values: [], children: [], addedAt: Date.now() });
   persist();
   toast('Sub-finding created', 'success');
   _refreshFindingsPane();
@@ -284,6 +290,16 @@ function deleteFinding(id) {
   _refreshFindingsPane();
 }
 
+function copyFindingValue(text, btnEl) {
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  });
+  const orig = btnEl.textContent;
+  btnEl.textContent = '✓';
+  setTimeout(() => { btnEl.textContent = orig; }, 1500);
+}
+
 function _countFindings(nodes) {
   return (nodes || []).reduce((n, f) => n + 1 + _countFindings(f.children), 0);
 }
@@ -305,6 +321,7 @@ function renderFindingItem(f, depth) {
       <span class="finding-val-dot">·</span>
       <span class="finding-val-text">${escHtml(v.value)}</span>
       ${v.note ? `<span class="finding-val-note">— ${escHtml(v.note)}</span>` : ''}
+      <button class="finding-copy-btn" onclick="copyFindingValue(${JSON.stringify(v.value)},this)" title="Copy value">⎘</button>
       <button class="finding-del" onclick="deleteFindingValue('${escHtml(f.id)}','${escHtml(v.id)}')">✕</button>
     </div>`).join('');
 
@@ -316,7 +333,6 @@ function renderFindingItem(f, depth) {
         <button class="finding-chevron${isCollapsed ? ' collapsed' : ''}" id="fnc-${escHtml(f.id)}" onclick="toggleFindingNode('${escHtml(f.id)}')">▼</button>
         <span class="finding-node-icon">${ft.icon}</span>
         <span class="finding-node-title">${escHtml(f.title)}</span>
-        ${f.note ? `<span class="finding-node-note">${escHtml(f.note)}</span>` : ''}
         <div class="finding-node-acts">
           <button class="finding-act-btn" onclick="showFindingForm('fav-${escHtml(f.id)}')">+ Value</button>
           <button class="finding-act-btn" onclick="showFindingForm('fas-${escHtml(f.id)}')">+ Sub</button>
@@ -324,6 +340,7 @@ function renderFindingItem(f, depth) {
         </div>
       </div>
       <div class="finding-node-body${isCollapsed ? ' finding-collapsed' : ''}" id="fnb-${escHtml(f.id)}">
+        ${f.body ? `<div class="finding-body-text" style="padding-left:${bodyPad}px"><pre class="finding-body-pre">${escHtml(f.body)}</pre><button class="finding-copy-btn" style="margin-left:4px;vertical-align:top" onclick="copyFindingValue(${JSON.stringify(f.body)},this)" title="Copy">⎘</button></div>` : ''}
         ${valuesHtml}
         <div class="finding-inline-form" id="fav-${escHtml(f.id)}" style="display:none;padding-left:${bodyPad}px">
           <input class="form-input mono" id="fav-val-${escHtml(f.id)}" placeholder="Value…" onkeydown="if(event.key==='Enter')submitFindingValue('${escHtml(f.id)}')" />
@@ -334,9 +351,11 @@ function renderFindingItem(f, depth) {
           </div>
         </div>
         <div class="finding-inline-form" id="fas-${escHtml(f.id)}" style="display:none;padding-left:${bodyPad}px">
-          <select class="form-select" id="fas-type-${escHtml(f.id)}">${_typeOptions(f.type)}</select>
-          <input class="form-input" id="fas-title-${escHtml(f.id)}" placeholder="Sub-finding name…" onkeydown="if(event.key==='Enter')submitSubFinding('${escHtml(f.id)}')" />
-          <input class="form-input" id="fas-note-${escHtml(f.id)}" placeholder="Note (optional)" onkeydown="if(event.key==='Enter')submitSubFinding('${escHtml(f.id)}')" />
+          <div class="finding-add-row">
+            <select class="form-select" id="fas-type-${escHtml(f.id)}">${_typeOptions(f.type)}</select>
+            <input class="form-input" id="fas-title-${escHtml(f.id)}" placeholder="Sub-finding name…" />
+          </div>
+          <textarea class="form-input finding-body-input" id="fas-body-${escHtml(f.id)}" placeholder="Content (optional)"></textarea>
           <div class="finding-form-btns">
             <button class="btn btn-primary btn-sm" onclick="submitSubFinding('${escHtml(f.id)}')">Create</button>
             <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fas-${escHtml(f.id)}').style.display='none'">Cancel</button>
@@ -360,12 +379,123 @@ function renderFindingsPane(sess) {
 
   return `
     <div class="finding-add-form">
-      <select class="form-select" id="finding-type">${_typeOptions('cred')}</select>
-      <input class="form-input" id="finding-title" placeholder="Finding name (e.g. Domain Users, NTLM Hashes)" onkeydown="if(event.key==='Enter')submitFinding()" />
-      <input class="form-input" id="finding-note" placeholder="Note (optional)" onkeydown="if(event.key==='Enter')submitFinding()" />
-      <button class="btn btn-primary btn-sm" onclick="submitFinding()">Create</button>
+      <div class="finding-add-row">
+        <select class="form-select" id="finding-type">${_typeOptions('cred')}</select>
+        <input class="form-input" id="finding-title" placeholder="Name (e.g. Domain Users, NTLM Hashes)" onkeydown="if(event.key==='Enter')submitFinding()" />
+        <button class="btn btn-primary btn-sm" onclick="submitFinding()">Create</button>
+      </div>
+      <textarea class="form-input finding-body-input" id="finding-body" placeholder="Content — paste credentials, hashes, command output, notes… (optional)"></textarea>
     </div>
     <div class="finding-list">${listHtml}</div>`;
+}
+
+/* ─── Multi-target ───────────────────────────────────────────────────────────── */
+function renderTargetsPane(sess) {
+  const targets = sess.targets || [];
+  const activeId = sess.activeTargetId;
+
+  const listHtml = targets.length === 0
+    ? `<div style="color:var(--text-muted);font-size:13px;padding:12px 0">No additional hosts yet. Add hosts to quickly switch <span style="font-family:var(--font-mono)">$$IP</span> between targets.</div>`
+    : targets.map(t => `
+      <div class="target-row${t.id === activeId ? ' active-target' : ''}">
+        <span class="target-ip">${escHtml(t.ip)}</span>
+        <span class="target-label">${escHtml(t.label)}</span>
+        <div class="target-acts">
+          ${t.id !== activeId
+            ? `<button class="btn btn-primary btn-sm" onclick="setActiveTarget('${escHtml(t.id)}')">Use</button>`
+            : `<span class="target-active-badge">Active</span>`}
+          <button class="finding-del" onclick="deleteTarget('${escHtml(t.id)}')">✕</button>
+        </div>
+      </div>`).join('');
+
+  const resetHtml = activeId
+    ? `<button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="clearActiveTarget()">Reset to session default IP</button>`
+    : '';
+
+  return `
+    <div class="target-add-form">
+      <input class="form-input mono" id="target-ip" placeholder="IP / hostname (e.g. 10.10.10.5)" onkeydown="if(event.key==='Enter')addTarget()" />
+      <input class="form-input" id="target-label" placeholder="Label (e.g. DC01)" onkeydown="if(event.key==='Enter')addTarget()" />
+      <button class="btn btn-primary btn-sm" onclick="addTarget()">+ Add</button>
+    </div>
+    <div class="target-list">${listHtml}</div>
+    ${resetHtml}
+  `;
+}
+
+function _refreshTargetsPane() {
+  const s = activeSession();
+  if (!s) return;
+  const pane = document.querySelector('[data-pane="targets"]');
+  if (pane) pane.innerHTML = renderTargetsPane(s);
+}
+
+function addTarget() {
+  const s = activeSession();
+  if (!s) return;
+  const ipEl    = document.getElementById('target-ip');
+  const labelEl = document.getElementById('target-label');
+  const ip    = ipEl    ? ipEl.value.trim()    : '';
+  const label = labelEl ? labelEl.value.trim() : '';
+  if (!ip) { toast('IP or hostname required', 'error'); return; }
+  if (!s.targets) s.targets = [];
+  s.targets.push({ id: uid(), ip, label: label || ip });
+  persist();
+  if (ipEl)    ipEl.value    = '';
+  if (labelEl) labelEl.value = '';
+  _refreshTargetsPane();
+  buildRightPanel();
+}
+
+function deleteTarget(targetId) {
+  const s = activeSession();
+  if (!s || !s.targets) return;
+  s.targets = s.targets.filter(t => t.id !== targetId);
+  if (s.activeTargetId === targetId) {
+    s.activeTargetId = null;
+    if (s.target) s.vars['$$IP'] = s.target;
+    else delete s.vars['$$IP'];
+  }
+  persist();
+  _refreshTargetsPane();
+  buildRightPanel();
+}
+
+function setActiveTarget(targetId) {
+  const s = activeSession();
+  if (!s) return;
+  const t = (s.targets || []).find(t => t.id === targetId);
+  if (!t) return;
+  s.activeTargetId = targetId;
+  s.vars['$$IP'] = t.ip;
+  persist();
+  _refreshTargetsPane();
+  buildRightPanel();
+  toast(`Active host: ${t.label || t.ip}`, 'info');
+  if (state.selectedNodeId && !state.selectedNodeId.startsWith('session-')) {
+    for (const tactic of TACTICS) {
+      const tech = tactic.techniques.find(te => te.id === state.selectedNodeId);
+      if (tech) { selectTechnique(tactic.id, state.selectedNodeId); break; }
+    }
+  }
+}
+
+function clearActiveTarget() {
+  const s = activeSession();
+  if (!s) return;
+  s.activeTargetId = null;
+  if (s.target) s.vars['$$IP'] = s.target;
+  else delete s.vars['$$IP'];
+  persist();
+  _refreshTargetsPane();
+  buildRightPanel();
+  toast('Reset to default IP', 'info');
+  if (state.selectedNodeId && !state.selectedNodeId.startsWith('session-')) {
+    for (const tactic of TACTICS) {
+      const tech = tactic.techniques.find(te => te.id === state.selectedNodeId);
+      if (tech) { selectTechnique(tactic.id, state.selectedNodeId); break; }
+    }
+  }
 }
 
 /* ─── Readiness ──────────────────────────────────────────────────────────────── */
@@ -718,6 +848,11 @@ function selectTechnique(tacticId, techId) {
     ${tech.theory ? '' : progressHtml}
     ${tech.description && !tech.theory ? `<div class="technique-desc">${escHtml(tech.description)}</div>` : ''}
     ${bodyHtml}
+    ${sess && !tech.theory ? `
+    <div class="tech-notes-section">
+      <div class="tech-notes-label">Technique Notes</div>
+      <textarea class="tech-notes-area" placeholder="Notes for this technique in this session…" onblur="saveTechNote('${escHtml(tech.id)}', this)">${escHtml((sess.techNotes && sess.techNotes[tech.id]) || '')}</textarea>
+    </div>` : ''}
   `;
 
   // Bind variable click handlers
@@ -729,6 +864,77 @@ function selectTechnique(tacticId, techId) {
 function toggleSubtechnique(subId) {
   const el = document.getElementById('sub-' + subId);
   if (el) el.classList.toggle('collapsed');
+}
+
+function saveTechNote(techId, el) {
+  const s = activeSession();
+  if (!s) return;
+  if (!s.techNotes) s.techNotes = {};
+  const val = el.value;
+  if (val.trim()) s.techNotes[techId] = val;
+  else delete s.techNotes[techId];
+  persist();
+}
+
+function renderNotesPane(sess) {
+  const cmdNotes = sess.cmdNotes || {};
+  const noteIds = Object.keys(cmdNotes).filter(id => cmdNotes[id] && cmdNotes[id].trim());
+
+  if (noteIds.length === 0) {
+    return `<div class="empty-state" style="padding:20px 0">
+      <div style="font-size:28px;margin-bottom:6px">📝</div>
+      <div>No command notes yet.</div>
+      <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Click "Note" on any command while running it to save output or observations.</div>
+    </div>`;
+  }
+
+  // Build cmdId → { cmd, tech, tactic } lookup
+  const lookup = {};
+  TACTICS.forEach(tactic => {
+    tactic.techniques.forEach(tech => {
+      getAllCommands(tech).forEach(cmd => {
+        lookup[cmd.id] = { cmd, tech, tactic };
+      });
+    });
+  });
+
+  // Group by tactic name → technique name → notes
+  const groups = {};
+  noteIds.forEach(id => {
+    const note = cmdNotes[id];
+    const entry = lookup[id];
+    const tacticName = entry ? entry.tactic.name : 'Other';
+    const techName   = entry ? entry.tech.name   : 'Unknown';
+    const cmdLabel   = entry ? entry.cmd.label    : id;
+    if (!groups[tacticName]) groups[tacticName] = {};
+    if (!groups[tacticName][techName]) groups[tacticName][techName] = [];
+    groups[tacticName][techName].push({ id, label: cmdLabel, note });
+  });
+
+  let html = '';
+  Object.entries(groups).forEach(([tacticName, techs]) => {
+    Object.entries(techs).forEach(([techName, items]) => {
+      html += `<div class="cnote-group">
+        <div class="cnote-group-hdr">
+          <span class="cnote-tactic">${escHtml(tacticName)}</span>
+          <span class="cnote-sep">›</span>
+          <span class="cnote-tech">${escHtml(techName)}</span>
+        </div>`;
+      items.forEach(({ id, label, note }) => {
+        html += `
+        <div class="cnote-item">
+          <div class="cnote-item-hdr">
+            <span class="cnote-label">${escHtml(label)}</span>
+            <button class="finding-copy-btn" onclick="copyFindingValue(${JSON.stringify(note)},this)" title="Copy note">⎘</button>
+          </div>
+          <pre class="cnote-body">${escHtml(note)}</pre>
+        </div>`;
+      });
+      html += `</div>`;
+    });
+  });
+
+  return html;
 }
 
 function renderSessionDetail(sid) {
@@ -748,14 +954,19 @@ function renderSessionDetail(sid) {
       <button class="stab-btn" data-tab="ready" onclick="switchSessionTab('ready')">▶ Ready</button>
       <button class="stab-btn" data-tab="discover" onclick="switchSessionTab('discover')">🔍 Discover</button>
       <button class="stab-btn" data-tab="findings" onclick="switchSessionTab('findings')">📋 Findings${sess.findings && sess.findings.length > 0 ? ` <span class="stab-count">${_countFindings(sess.findings)}</span>` : ''}</button>
+      <button class="stab-btn" data-tab="notes" onclick="switchSessionTab('notes')">📝 Notes${sess.cmdNotes && Object.keys(sess.cmdNotes).length > 0 ? ` <span class="stab-count">${Object.keys(sess.cmdNotes).length}</span>` : ''}</button>
+      <button class="stab-btn" data-tab="targets" onclick="switchSessionTab('targets')">🎯 Hosts${sess.targets && sess.targets.length > 0 ? ` <span class="stab-count">${sess.targets.length}</span>` : ''}</button>
       <button class="stab-btn stab-btn-vars-only" data-tab="vars" onclick="switchSessionTab('vars')">⚙ Vars</button>
     </div>
     <div class="stab-pane" data-pane="ready">${renderReadyPane(sess)}</div>
     <div class="stab-pane" data-pane="discover" style="display:none">${renderDiscoverPane(sess)}</div>
     <div class="stab-pane" data-pane="findings" style="display:none">${renderFindingsPane(sess)}</div>
+    <div class="stab-pane" data-pane="notes" style="display:none">${renderNotesPane(sess)}</div>
+    <div class="stab-pane" data-pane="targets" style="display:none">${renderTargetsPane(sess)}</div>
     <div class="stab-pane" data-pane="vars" style="display:none">${renderVarsPane(sess)}</div>
-    <div style="padding:4px 0 16px;display:flex;gap:8px">
+    <div style="padding:4px 0 16px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="openAddVarModal()">+ Add Variable</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportSession('${escHtml(sid)}')">Export</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="confirmDeleteSession('${escHtml(sid)}')">Delete Session</button>
     </div>
   `;
@@ -1078,7 +1289,10 @@ function createSession() {
     vars: {},
     techProgress: {},
     cmdNotes: {},
+    techNotes: {},
     findings: [],
+    targets: [],
+    activeTargetId: null,
   };
 
   if (target) sess.vars['$$IP'] = target;
@@ -1110,7 +1324,10 @@ function closeSessionMenu() {
 
 function rebuildSessionMenu() {
   const menu = document.getElementById('session-menu');
-  let html = `<div class="session-menu-item new-session-btn" onclick="openNewSessionModal()">＋ New Session</div>`;
+  let html = `
+    <div class="session-menu-item new-session-btn" onclick="openNewSessionModal()">＋ New Session</div>
+    <div class="session-menu-item" onclick="importSessionPrompt()">📥 Import Session</div>
+  `;
 
   if (state.sessions.length > 0) {
     html += `<hr class="divider" style="margin:0">`;
@@ -1153,6 +1370,59 @@ function confirmDeleteSession(sid) {
   document.getElementById('content').innerHTML = welcomeHtml();
   buildSidebar();
   buildRightPanel();
+}
+
+/* ─── Export / Import ────────────────────────────────────────────────────────── */
+function exportSession(sid) {
+  const sess = state.sessions.find(s => s.id === sid);
+  if (!sess) return;
+  const json = JSON.stringify(sess, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `penotes-${sess.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Session exported', 'success');
+}
+
+function importSessionPrompt() {
+  closeSessionMenu();
+  document.getElementById('import-session-input').click();
+}
+
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const sess = JSON.parse(e.target.result);
+      if (!sess.name || typeof sess.vars !== 'object') { toast('Invalid session file', 'error'); return; }
+      sess.id = uid();
+      if (!sess.techProgress)  sess.techProgress  = {};
+      if (!sess.cmdNotes)      sess.cmdNotes      = {};
+      if (!sess.techNotes)     sess.techNotes     = {};
+      if (!sess.findings)      sess.findings      = [];
+      if (!sess.targets)       sess.targets       = [];
+      if (!('activeTargetId' in sess)) sess.activeTargetId = null;
+      state.sessions.push(sess);
+      state.activeSessionId = sess.id;
+      persist();
+      buildSidebar();
+      buildRightPanel();
+      state.selectedNodeId = 'session-' + sess.id;
+      renderSessionDetail(sess.id);
+      toast(`Imported "${sess.name}"`, 'success');
+    } catch {
+      toast('Failed to parse session file', 'error');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
 }
 
 /* ─── Modal helpers ──────────────────────────────────────────────────────────── */

