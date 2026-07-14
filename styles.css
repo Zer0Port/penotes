@@ -1568,7 +1568,7 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; 
   /* Vars tab: visible on mobile */
   .stab-btn-vars-only { display: block; }
 
-  /* Stab bar: sticky so tabs stay visible while scrolling */
+  /* Stab bar: sticky + horizontally scrollable on mobile */
   .stab-bar {
     position: sticky;
     top: 0;
@@ -1576,7 +1576,12 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; 
     background: var(--bg);
     margin: 0 -16px;
     padding: 16px 16px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
   }
+  .stab-bar::-webkit-scrollbar { display: none; }
 
   /* Larger touch targets */
   .stab-btn { min-height: 40px; padding: 8px 16px; font-size: 13px; }
